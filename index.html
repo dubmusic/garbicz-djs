@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+  <title>Garbicz DJ Shortlist</title>
+  <meta name="description" content="Our DJ shortlist for Garbicz Festival — works offline." />
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#20342a" />
+
+  <!-- iOS standalone install -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Garbicz DJs" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+
+  <!-- Handwritten display face (enhancement — falls back to a system cursive/serif offline) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- Top app bar -->
+    <header class="appbar">
+      <div class="wordmark">
+        <span class="wordmark__sun" aria-hidden="true"></span>
+        <span class="wordmark__text">Garbicz&nbsp;DJs</span>
+      </div>
+      <button id="syncPill" class="sync-pill" type="button" title="Sync status — tap to refresh">
+        <span class="sync-pill__dot"></span>
+        <span id="syncPillText" class="sync-pill__text">…</span>
+      </button>
+    </header>
+
+    <!-- Search / sort toolbar -->
+    <div class="toolbar">
+      <div class="search">
+        <svg class="search__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4a6 6 0 104.47 10.03l4.25 4.24 1.41-1.41-4.24-4.25A6 6 0 0010 4zm0 2a4 4 0 110 8 4 4 0 010-8z"/></svg>
+        <input id="search" class="search__input" type="search" inputmode="search"
+               placeholder="Search artist, style, from…" autocomplete="off" />
+      </div>
+      <label class="sort">
+        <select id="sort" class="sort__select" aria-label="Sort by">
+          <option value="artist">A–Z</option>
+          <option value="setTime">Set time</option>
+          <option value="ratingM">My rating</option>
+          <option value="ratingA">Her rating</option>
+          <option value="ratingSum">Combined rating</option>
+        </select>
+      </label>
+    </div>
+
+    <!-- List -->
+    <main id="list" class="list" aria-live="polite"></main>
+
+    <!-- Add button -->
+    <button id="addBtn" class="fab" type="button" aria-label="Add a DJ">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>
+    </button>
+
+    <!-- Editor sheet (built/populated by app.js) -->
+    <div id="editor" class="editor" hidden></div>
+
+    <!-- Toasts -->
+    <div id="toasts" class="toasts" aria-live="assertive"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
