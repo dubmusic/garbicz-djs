@@ -9,7 +9,7 @@
            Deploy > New deployment > Web app >
            Execute as: Me, Who has access: Anyone with the link.
 ------------------------------------------------------------------------- */
-const EXEC_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
+const EXEC_URL = 'https://script.google.com/macros/s/AKfycbyxsJQsQKq5M7B5UOn5KF1m-l60l07ELZ91IneVXGsFBkZpoUvk0x0z2haWxyuv3pHUNg/exec';
 
 const IS_CONFIGURED = /^https:\/\/script\.google(usercontent)?\.com\//.test(EXEC_URL);
 
