@@ -56,11 +56,16 @@ body {
 button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
 input, select, textarea { font-family: inherit; }
 
-/* ---------- App bar ---------- */
-.appbar {
+/* ---------- Sticky top group (app bar + tabs + toolbar) ---------- */
+.topbar {
   position: sticky;
   top: 0;
   z-index: 20;
+  background: var(--cream);
+}
+
+/* ---------- App bar ---------- */
+.appbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -110,16 +115,39 @@ input, select, textarea { font-family: inherit; }
 .sync-pill[data-state="error"]   .sync-pill__dot { background: #e0785e; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
 
+/* ---------- View tabs ---------- */
+.tabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px 4px;
+  background: var(--cream);
+}
+.tab {
+  flex: 1 1 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  background: var(--cream-2);
+  border: 1.5px solid var(--line);
+  transition: background 0.12s, color 0.12s;
+}
+.tab.is-active {
+  background: var(--forest-2);
+  color: var(--cream);
+  border-color: var(--forest-2);
+}
+
 /* ---------- Toolbar ---------- */
 .toolbar {
-  position: sticky;
-  top: calc(var(--safe-top) + 58px);
-  z-index: 15;
   display: flex;
   gap: 10px;
   padding: 12px 16px;
-  background: linear-gradient(180deg, var(--cream) 70%, rgba(247,240,225,0));
+  background: var(--cream);
 }
+/* Sorting is list-only; hide the control in calendar view. */
+.toolbar.is-calendar .sort { display: none; }
 .search {
   position: relative;
   flex: 1 1 auto;
@@ -287,6 +315,77 @@ input, select, textarea { font-family: inherit; }
 }
 @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
+/* ---------- Calendar view ---------- */
+.cal-day { margin-bottom: 22px; }
+.cal-day__head {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 4px 2px 10px;
+  border-bottom: 2px solid var(--line);
+  margin-bottom: 10px;
+}
+.cal-day__title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--forest-2);
+}
+.cal-day__count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cream);
+  background: var(--moss);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+.cal-empty {
+  color: var(--muted);
+  font-style: italic;
+  font-size: 14px;
+  padding: 4px 2px 8px;
+}
+.cal-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  margin-bottom: 8px;
+  background: linear-gradient(180deg, #fffdf7, var(--cream-2));
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+}
+.cal-row:active { transform: scale(0.99); }
+.cal-row__time {
+  flex: 0 0 auto;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 48px;
+}
+.cal-row__main { flex: 1 1 auto; min-width: 0; }
+.cal-row__artist {
+  display: block;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cal-row__stage {
+  display: inline-block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--wood);
+}
+.cal-row__ratings { flex: 0 0 auto; display: flex; gap: 6px; }
+.cal-tag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 7px;
+  border-radius: 8px;
+}
+.cal-tag--m { background: rgba(217,164,65,0.18); color: #a67a1f; }
+.cal-tag--a { background: rgba(201,104,63,0.16); color: #a8502e; }
+
 /* ---------- FAB ---------- */
 .fab {
   position: fixed;
@@ -363,6 +462,11 @@ input, select, textarea { font-family: inherit; }
 .field__textarea { resize: vertical; min-height: 90px; line-height: 1.45; }
 .field__row { display: flex; gap: 12px; }
 .field__row .field { flex: 1 1 0; }
+
+/* Set-time control: day dropdown + 24h time */
+.st { display: flex; gap: 10px; }
+.st__day { flex: 1 1 60%; }
+.st__time { flex: 0 0 130px; }
 
 /* Rating stepper */
 .rater { display: flex; align-items: center; gap: 12px; }

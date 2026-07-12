@@ -28,6 +28,8 @@
 </head>
 <body>
   <div class="app">
+    <!-- Sticky top: app bar + tabs + toolbar move together -->
+    <div class="topbar">
     <!-- Top app bar -->
     <header class="appbar">
       <div class="wordmark">
@@ -40,6 +42,12 @@
       </button>
     </header>
 
+    <!-- View tabs -->
+    <nav class="tabs" role="tablist">
+      <button id="tabList" class="tab is-active" type="button" role="tab">List</button>
+      <button id="tabCalendar" class="tab" type="button" role="tab">Calendar</button>
+    </nav>
+
     <!-- Search / sort toolbar -->
     <div class="toolbar">
       <div class="search">
@@ -51,14 +59,15 @@
         <select id="sort" class="sort__select" aria-label="Sort by">
           <option value="artist">A–Z</option>
           <option value="setTime">Set time</option>
+          <option value="stage">Stage</option>
           <option value="ratingM">My rating</option>
           <option value="ratingA">Her rating</option>
-          <option value="ratingSum">Combined rating</option>
         </select>
       </label>
     </div>
+    </div><!-- /.topbar -->
 
-    <!-- List -->
+    <!-- List / Calendar render target -->
     <main id="list" class="list" aria-live="polite"></main>
 
     <!-- Add button -->

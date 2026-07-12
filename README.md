@@ -27,7 +27,10 @@ Artist | M | A | From | Style | Biography | Best DJ Set | Resident Advisor | Ins
 ```
 
 - `M` / `A` — the two personal rating columns (Michael / partner).
-- `Set Time`, `Stage` — festival scheduling (added in this version).
+- `Set Time`, `Stage` — festival scheduling. **Set Time** is stored canonically
+  as `YYYY-MM-DD HH:mm` (e.g. `2026-07-30 23:30`) — the editor writes this via a
+  festival-day dropdown (Jul 30 – Aug 2, 2026) plus a 24-hour time picker. That
+  format sorts chronologically and drives the Calendar view.
 - `id`, `lastModified` — sync helper columns, auto-added and back-filled by the
   backend. **Don't delete these.** Column order can change freely — the backend
   reads/writes by header name.
@@ -89,9 +92,12 @@ Artist | M | A | From | Style | Biography | Best DJ Set | Resident Advisor | Ins
 
 ## How it works day-to-day
 
-- **List** shows every DJ with ratings, set time, stage, style, and links to
-  Instagram / Resident Advisor. Search by artist/style/from/stage; sort A–Z, by
-  set time, or by rating.
+- **List** view shows every DJ with ratings, set time, stage, style, and links
+  to Instagram / Resident Advisor. Search by artist/style/from/stage; sort A–Z,
+  by set time, by **stage**, or by rating (M / A).
+- **Calendar** view (top tab) groups every DJ that has a set time under each
+  festival day (Jul 30 – Aug 2, 2026), ordered by time — the day-by-day running
+  order. Tap any entry to edit it.
 - **Tap a card** to edit; **＋** adds a new DJ.
 - Edits save **instantly and offline**. A small dot on a card = not yet synced.
   The pill in the top bar shows sync status (Offline / Syncing / Synced) — tap

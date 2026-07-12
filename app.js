@@ -97,6 +97,7 @@ function idbDelete(id) {
 /* ---------- 4. App state ------------------------------------------------ */
 const state = {
   rows: [],            // array of records (from IDB)
+  view: 'list',        // 'list' | 'calendar'
   search: '',
   sort: 'artist',
   status: 'offline',   // offline | syncing | online | error
@@ -128,6 +129,39 @@ function webUrl(v) {
   v = str(v); if (!v) return null;
   if (/^https?:\/\//i.test(v)) return v;
   return v.indexOf('.') > -1 ? 'https://' + v : null;
+}
+
+/* ---------- 6b. Set-time helpers ----------------------------------------
+   "Set Time" is stored canonically as "YYYY-MM-DD HH:mm" (or just the date
+   if no time). That form sorts chronologically as plain text and is easy to
+   group by day for the calendar. The festival runs Jul 30 – Aug 2, 2026.
+------------------------------------------------------------------------- */
+const FESTIVAL_DAYS = ['2026-07-30', '2026-07-31', '2026-08-01', '2026-08-02'];
+
+function parseSetTime(v) {
+  const s = str(v);
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{1,2}:\d{2}))?/);
+  if (!m) return { day: '', time: '' };
+  return { day: m[1], time: m[2] || '' };
+}
+function buildSetTime(day, time) {
+  if (!day) return '';
+  return time ? day + ' ' + time : day;
+}
+function formatDayLabel(dateStr, long) {
+  const p = str(dateStr).split('-');
+  if (p.length !== 3) return str(dateStr);
+  const dt = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  if (isNaN(dt.getTime())) return str(dateStr);
+  return dt.toLocaleDateString('en-GB', {
+    weekday: long ? 'long' : 'short', day: 'numeric', month: long ? 'long' : 'short',
+  });
+}
+function formatSetTimeChip(v) {
+  const p = parseSetTime(v);
+  if (!p.day) return str(v); // empty, or legacy free text — show as-is
+  const label = formatDayLabel(p.day, false);
+  return p.time ? label + ' · ' + p.time : label;
 }
 
 /* ---------- 7. Render list ---------------------------------------------- */
@@ -162,7 +196,7 @@ function card(row) {
   if (ra) links.push(el('a', { class: 'linkbtn linkbtn--ra', href: ra, target: '_blank', rel: 'noopener' }, [svg(ICON.ra), 'RA']));
 
   const chips = [];
-  if (str(row[F.setTime])) chips.push(el('span', { class: 'chip chip--time' }, [svg(ICON.clock), str(row[F.setTime])]));
+  if (str(row[F.setTime])) chips.push(el('span', { class: 'chip chip--time' }, [svg(ICON.clock), formatSetTimeChip(row[F.setTime])]));
   if (str(row[F.stage])) chips.push(el('span', { class: 'chip chip--stage' }, [svg(ICON.pin), str(row[F.stage])]));
   if (str(row[F.style])) chips.push(el('span', { class: 'chip chip--style' }, [str(row[F.style])]));
 
@@ -186,23 +220,17 @@ function card(row) {
 }
 
 function visibleRows() {
-  const q = state.search.toLowerCase();
-  let rows = state.rows.filter(function (r) {
-    if (!q) return true;
-    return [F.artist, F.style, F.from, F.stage].some(function (k) {
-      return str(r[k]).toLowerCase().indexOf(q) > -1;
-    });
-  });
+  let rows = state.rows.filter(matchesSearch);
+  const byArtist = function (a, b) { return str(a[F.artist]).localeCompare(str(b[F.artist])); };
   const bySort = {
-    artist: function (a, b) { return str(a[F.artist]).localeCompare(str(b[F.artist])); },
-    setTime: function (a, b) { return blankLast(str(a[F.setTime]), str(b[F.setTime])); },
+    artist: byArtist,
+    setTime: function (a, b) { return blankLast(str(a[F.setTime]), str(b[F.setTime])) || byArtist(a, b); },
+    stage: function (a, b) { return blankLast(str(a[F.stage]), str(b[F.stage])) || byArtist(a, b); },
     ratingM: function (a, b) { return numDesc(ratingNum(a[F.m]), ratingNum(b[F.m])); },
     ratingA: function (a, b) { return numDesc(ratingNum(a[F.a]), ratingNum(b[F.a])); },
-    ratingSum: function (a, b) { return numDesc(sum(a), sum(b)); },
   };
   return rows.sort(bySort[state.sort] || bySort.artist);
 }
-function sum(r) { return (ratingNum(r[F.m]) || 0) + (ratingNum(r[F.a]) || 0); }
 function numDesc(a, b) {
   if (a == null && b == null) return 0;
   if (a == null) return 1;
@@ -231,6 +259,91 @@ function renderList() {
     return;
   }
   rows.forEach(function (r) { list.appendChild(card(r)); });
+}
+
+/* Dispatch between the list and calendar views, and sync the chrome. */
+function render() {
+  const isCal = state.view === 'calendar';
+  const tb = $('.toolbar'); if (tb) tb.classList.toggle('is-calendar', isCal);
+  const tl = $('#tabList'), tc = $('#tabCalendar');
+  if (tl) tl.classList.toggle('is-active', !isCal);
+  if (tc) tc.classList.toggle('is-active', isCal);
+  if (isCal) renderCalendar(); else renderList();
+}
+
+function matchesSearch(r) {
+  const q = state.search.toLowerCase();
+  if (!q) return true;
+  return [F.artist, F.style, F.from, F.stage].some(function (k) {
+    return str(r[k]).toLowerCase().indexOf(q) > -1;
+  });
+}
+
+function calRow(r) {
+  const t = parseSetTime(r[F.setTime]).time || '—';
+  return el('div', {
+    class: 'cal-row', role: 'button', tabindex: '0',
+    onclick: function () { openEditor(r.id); },
+  }, [
+    el('span', { class: 'cal-row__time', text: t }),
+    el('div', { class: 'cal-row__main' }, [
+      el('span', { class: 'cal-row__artist', text: str(r[F.artist]) || 'Untitled' }),
+      str(r[F.stage]) ? el('span', { class: 'cal-row__stage', text: str(r[F.stage]) }) : null,
+    ]),
+    el('div', { class: 'cal-row__ratings' }, [
+      el('span', { class: 'cal-tag cal-tag--m', text: 'M ' + (str(r[F.m]) || '–') }),
+      el('span', { class: 'cal-tag cal-tag--a', text: 'A ' + (str(r[F.a]) || '–') }),
+    ]),
+  ]);
+}
+
+function renderCalendar() {
+  const list = $('#list');
+  list.innerHTML = '';
+
+  // Bucket every DJ that has a set time by its day.
+  const buckets = {};
+  state.rows.forEach(function (r) {
+    if (!str(r[F.setTime]) || !matchesSearch(r)) return;
+    const key = parseSetTime(r[F.setTime]).day || 'other';
+    (buckets[key] = buckets[key] || []).push(r);
+  });
+
+  // Show all four festival days always; append any stray days, then "other".
+  const extra = Object.keys(buckets)
+    .filter(function (k) { return k !== 'other' && FESTIVAL_DAYS.indexOf(k) === -1; }).sort();
+  const dayKeys = FESTIVAL_DAYS.concat(extra);
+  if (buckets.other) dayKeys.push('other');
+
+  let anyScheduled = false;
+  dayKeys.forEach(function (key) {
+    const rows = (buckets[key] || []).slice().sort(function (a, b) {
+      return blankLast(parseSetTime(a[F.setTime]).time, parseSetTime(b[F.setTime]).time)
+        || str(a[F.artist]).localeCompare(str(b[F.artist]));
+    });
+    // Festival days always render (even if empty); stray days only when populated.
+    if (!rows.length && FESTIVAL_DAYS.indexOf(key) === -1) return;
+
+    const section = el('div', { class: 'cal-day' }, [
+      el('div', { class: 'cal-day__head' }, [
+        el('span', { class: 'cal-day__title', text: key === 'other' ? 'Other times' : formatDayLabel(key, true) }),
+        rows.length ? el('span', { class: 'cal-day__count', text: String(rows.length) }) : null,
+      ]),
+    ]);
+    if (!rows.length) {
+      section.appendChild(el('div', { class: 'cal-empty', text: 'Nothing scheduled yet' }));
+    } else {
+      anyScheduled = true;
+      rows.forEach(function (r) { section.appendChild(calRow(r)); });
+    }
+    list.appendChild(section);
+  });
+
+  if (!anyScheduled && state.search) {
+    list.insertBefore(el('div', { class: 'state' }, [
+      el('div', { class: 'state__hint', text: 'No scheduled DJs match “' + state.search + '”.' }),
+    ]), list.firstChild);
+  }
 }
 
 /* ---------- 8. Editor --------------------------------------------------- */
@@ -290,6 +403,32 @@ function rater(label, key, value) {
   return wrap;
 }
 
+// Structured set-time editor: festival-day dropdown + a 24h time (HH:mm).
+function setTimeControl(value) {
+  const p = parseSetTime(value);
+  const daySel = el('select', { class: 'field__input st__day' }, [
+    el('option', { value: '', text: '— no set time —' }),
+  ]);
+  FESTIVAL_DAYS.forEach(function (d) {
+    daySel.appendChild(el('option', { value: d, text: formatDayLabel(d, true) }));
+  });
+  // Preserve any stray/legacy day that isn't one of the four festival days.
+  if (p.day && FESTIVAL_DAYS.indexOf(p.day) === -1) {
+    daySel.appendChild(el('option', { value: p.day, text: formatDayLabel(p.day, true) }));
+  }
+  daySel.value = p.day || '';
+
+  const timeInput = el('input', { class: 'field__input st__time', type: 'time' });
+  timeInput.value = p.time || '';
+
+  const wrap = el('div', { class: 'field' }, [
+    el('label', { class: 'field__label', text: 'Set time' }),
+    el('div', { class: 'st' }, [daySel, timeInput]),
+  ]);
+  wrap._read = function () { return buildSetTime(daySel.value, timeInput.value); };
+  return wrap;
+}
+
 function openEditor(id) {
   const isNew = !id;
   editing = isNew
@@ -300,10 +439,11 @@ function openEditor(id) {
   const mRater = rater('My rating (M)', F.m, editing[F.m]);
   const aRater = rater('Her rating (A)', F.a, editing[F.a]);
 
+  const setTimeCtl = setTimeControl(editing[F.setTime]);
+
   // Text/URL/textarea fields; keep their wrappers so we can read inputs directly.
   const fields = [
     field('Artist', F.artist, editing[F.artist], { placeholder: 'Artist / act name' }),
-    field('Set time', F.setTime, editing[F.setTime], { placeholder: 'e.g. Sat 02:00–04:00' }),
     field('Stage', F.stage, editing[F.stage], { placeholder: 'e.g. Wooo, La Playa…' }),
     field('Style', F.style, editing[F.style], { placeholder: 'Genre / vibe' }),
     field('From', F.from, editing[F.from], { placeholder: 'City / country' }),
@@ -318,16 +458,17 @@ function openEditor(id) {
   const body = el('div', { class: 'editor__body' }, [
     fields[0],                                  // Artist
     el('div', { class: 'field__row' }, [mRater, aRater]),
-    fields[1], fields[2], fields[3], fields[4], // set time, stage, style, from
-    fields[5], fields[6], fields[7],            // ig, ra, best set
-    fields[8],                                  // notes
+    setTimeCtl,                                 // Set time (day + 24h time)
+    fields[1], fields[2], fields[3],            // stage, style, from
+    fields[4], fields[5], fields[6],            // ig, ra, best set
+    fields[7],                                  // notes
   ]);
 
   const bar = el('div', { class: 'editor__bar' }, [
     el('button', { class: 'editor__close', type: 'button', text: 'Cancel', onclick: closeEditor }),
     el('div', { class: 'editor__title', text: isNew ? 'New DJ' : 'Edit' }),
     el('button', { class: 'editor__save', type: 'button', text: 'Save',
-      onclick: function () { saveEditor(inputs, mRater, aRater); } }),
+      onclick: function () { saveEditor(inputs, setTimeCtl, mRater, aRater); } }),
   ]);
 
   const editor = $('#editor');
@@ -344,14 +485,15 @@ function closeEditor() {
   editing = null;
 }
 
-async function saveEditor(inputs, mRater, aRater) {
+async function saveEditor(inputs, setTimeCtl, mRater, aRater) {
   const rec = editing;
   const artist = (inputs[F.artist].value || '').trim();
   if (!artist) { toast('Add an artist name first', 'warn'); return; }
 
   // Pull all text fields from the form into the record (direct refs, so keys
-  // with spaces like "Set Time" work correctly).
+  // with spaces like "Best DJ Set" work correctly).
   for (const key in inputs) rec[key] = inputs[key].value;
+  rec[F.setTime] = setTimeCtl._read();
   rec[F.m] = mRater._read();
   rec[F.a] = aRater._read();
 
@@ -363,7 +505,7 @@ async function saveEditor(inputs, mRater, aRater) {
   const idx = state.rows.findIndex(function (r) { return r.id === rec.id; });
   if (idx > -1) state.rows[idx] = rec; else state.rows.push(rec);
   await idbPut(rec);
-  renderList();
+  render();
   closeEditor();
 
   if (navigator.onLine && IS_CONFIGURED) {
@@ -431,7 +573,7 @@ async function pull() {
   }
 
   state.rows = merged;
-  renderList();
+  render();
 }
 
 async function pushDirty() {
@@ -476,7 +618,7 @@ async function pushDirty() {
       await idbPut(row);
     }
   }
-  renderList();
+  render();
 }
 
 /* ---------- 10. Toasts -------------------------------------------------- */
@@ -492,8 +634,10 @@ function toast(msg, kind) {
 /* ---------- 11. Boot ---------------------------------------------------- */
 async function boot() {
   // Wire controls
-  $('#search').addEventListener('input', function (e) { state.search = e.target.value; renderList(); });
-  $('#sort').addEventListener('change', function (e) { state.sort = e.target.value; renderList(); });
+  $('#search').addEventListener('input', function (e) { state.search = e.target.value; render(); });
+  $('#sort').addEventListener('change', function (e) { state.sort = e.target.value; render(); });
+  $('#tabList').addEventListener('click', function () { state.view = 'list'; render(); });
+  $('#tabCalendar').addEventListener('click', function () { state.view = 'calendar'; render(); });
   $('#addBtn').addEventListener('click', function () { openEditor(null); });
   $('#syncPill').addEventListener('click', function () { syncNow({ userInitiated: true }); });
 
@@ -505,7 +649,7 @@ async function boot() {
 
   // 1) Instant render from cache
   try { state.rows = await idbGetAll(); } catch (e) { state.rows = []; }
-  renderList();
+  render();
   setStatus(navigator.onLine ? 'online' : 'offline', navigator.onLine ? '' : 'Offline');
 
   if (!IS_CONFIGURED) {
