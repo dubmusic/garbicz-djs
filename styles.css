@@ -96,7 +96,10 @@ input, select, textarea { font-family: inherit; }
   color: var(--text);
   text-shadow: 0 0 10px rgba(226, 85, 166, 0.6);
 }
-.wordmark__logo { height: 34px; width: auto; display: block; }
+.wordmark__logo {
+  height: 40px; width: auto; display: block;
+  filter: drop-shadow(0 0 8px rgba(226, 85, 166, 0.55));
+}
 .wordmark__sun {
   width: 22px; height: 22px; border-radius: 50%;
   background: radial-gradient(circle at 40% 35%, var(--magenta-2), var(--magenta) 70%);

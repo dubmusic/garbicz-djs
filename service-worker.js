@@ -5,13 +5,14 @@
    Bump CACHE_VERSION whenever the shell files change.
    ============================================================ */
 
-const CACHE_VERSION = 'garbicz-v4';
+const CACHE_VERSION = 'garbicz-v5';
 const SHELL = [
   './',
   './index.html',
   './app.js',
   './styles.css',
   './manifest.json',
+  './icons/logo.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
