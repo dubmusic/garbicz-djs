@@ -484,6 +484,39 @@ input, select, textarea { font-family: inherit; }
 .rater__num.is-active { background: var(--ochre); border-color: var(--ochre); color: var(--forest); }
 .rater__clear { font-size: 13px; color: var(--muted); text-decoration: underline; padding: 6px; }
 
+/* ---------- Read-only profile ---------- */
+.editor__title--name {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  max-width: 58vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.profile__top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 4px;
+}
+.profile__from {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+.profile__links { margin-top: 18px; flex-wrap: wrap; }
+.profile__links .linkbtn { padding: 11px 15px; font-size: 14px; }
+.linkbtn--set { color: #3c7a4a; }
+.profile__notes { margin-top: 22px; }
+.profile__bio {
+  margin: 8px 0 0;
+  line-height: 1.55;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ---------- Toasts ---------- */
 .toasts {
   position: fixed;

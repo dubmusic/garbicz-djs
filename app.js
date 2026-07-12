@@ -171,6 +171,7 @@ const ICON = {
   leaf: '<path d="M17 8C8 10 5.9 16.2 4 22l2 0c1-3.5 2.6-5.9 5-7.5C14.3 12.4 17 11 17 8z"/>',
   ig: '<path d="M12 2c2.7 0 3 0 4.1.1 1.1 0 1.8.2 2.4.5.7.2 1.2.6 1.7 1.1s.9 1 1.1 1.7c.3.6.5 1.3.5 2.4C22 8.9 22 9.3 22 12s0 3-.1 4.1c0 1.1-.2 1.8-.5 2.4a4.7 4.7 0 01-1.1 1.7 4.7 4.7 0 01-1.7 1.1c-.6.3-1.3.5-2.4.5-1.1.1-1.4.1-4.1.1s-3 0-4.1-.1c-1.1 0-1.8-.2-2.4-.5a4.7 4.7 0 01-1.7-1.1 4.7 4.7 0 01-1.1-1.7c-.3-.6-.5-1.3-.5-2.4C2 15 2 14.7 2 12s0-3 .1-4.1c0-1.1.2-1.8.5-2.4A4.7 4.7 0 013.7 3.8a4.7 4.7 0 011.7-1.1c.6-.3 1.3-.5 2.4-.5C8.9 2 9.3 2 12 2zm0 5a5 5 0 100 10 5 5 0 000-10zm0 8.2A3.2 3.2 0 1112 8.8a3.2 3.2 0 010 6.4zm5.3-8.4a1.2 1.2 0 11-2.4 0 1.2 1.2 0 012.4 0z"/>',
   ra: '<path d="M4 4h16v3H4zm0 5h16v3H4zm0 5h10v3H4z"/>',
+  play: '<path d="M8 5v14l11-7z"/>',
 };
 function svg(path, cls) {
   return el('svg', { class: cls || '', viewBox: '0 0 24 24', 'aria-hidden': 'true', html: path });
@@ -215,7 +216,7 @@ function card(row) {
 
   return el('div', {
     class: 'card', role: 'button', tabindex: '0',
-    onclick: function () { openEditor(row.id); },
+    onclick: function () { openDetail(row.id); },
   }, children);
 }
 
@@ -283,7 +284,7 @@ function calRow(r) {
   const t = parseSetTime(r[F.setTime]).time || '—';
   return el('div', {
     class: 'cal-row', role: 'button', tabindex: '0',
-    onclick: function () { openEditor(r.id); },
+    onclick: function () { openDetail(r.id); },
   }, [
     el('span', { class: 'cal-row__time', text: t }),
     el('div', { class: 'cal-row__main' }, [
@@ -429,28 +430,89 @@ function setTimeControl(value) {
   return wrap;
 }
 
-function openEditor(id) {
+// Open a DJ: existing rows show the read-only profile first; new rows go
+// straight to the edit form.
+function openDetail(id) {
   const isNew = !id;
   editing = isNew
     ? { id: (crypto.randomUUID ? crypto.randomUUID() : 'tmp-' + Date.now() + Math.random()), _new: true }
     : state.rows.find(function (r) { return r.id === id; });
   if (!editing) return;
 
-  const mRater = rater('My rating (M)', F.m, editing[F.m]);
-  const aRater = rater('Her rating (A)', F.a, editing[F.a]);
+  const editor = $('#editor');
+  editor.hidden = false;
+  document.body.style.overflow = 'hidden';
+  if (isNew) showEdit(true); else showView();
+}
 
-  const setTimeCtl = setTimeControl(editing[F.setTime]);
+function swapSheet(bar, body) {
+  const editor = $('#editor');
+  editor.innerHTML = '';
+  editor.appendChild(bar);
+  editor.appendChild(body);
+  editor.scrollTop = 0;
+}
+
+// ---- Read-only profile (default view) ----
+function showView() {
+  const rec = editing;
+
+  const links = [];
+  const ig = igUrl(rec[F.ig]);
+  if (ig) links.push(el('a', { class: 'linkbtn linkbtn--ig', href: ig, target: '_blank', rel: 'noopener' }, [svg(ICON.ig), 'Instagram']));
+  const ra = webUrl(rec[F.ra]);
+  if (ra) links.push(el('a', { class: 'linkbtn linkbtn--ra', href: ra, target: '_blank', rel: 'noopener' }, [svg(ICON.ra), 'Resident Advisor']));
+  const best = webUrl(rec[F.bestSet]);
+  if (best) links.push(el('a', { class: 'linkbtn linkbtn--set', href: best, target: '_blank', rel: 'noopener' }, [svg(ICON.play), 'Best set']));
+
+  const chips = [];
+  if (str(rec[F.setTime])) chips.push(el('span', { class: 'chip chip--time' }, [svg(ICON.clock), formatSetTimeChip(rec[F.setTime])]));
+  if (str(rec[F.stage])) chips.push(el('span', { class: 'chip chip--stage' }, [svg(ICON.pin), str(rec[F.stage])]));
+  if (str(rec[F.style])) chips.push(el('span', { class: 'chip chip--style' }, [str(rec[F.style])]));
+
+  const empty = !chips.length && !links.length && !str(rec[F.bio]);
+  const body = el('div', { class: 'editor__body' }, [
+    el('div', { class: 'profile__top' }, [
+      el('div', { class: 'ratings' }, [ratingBadge(rec[F.m], 'm'), ratingBadge(rec[F.a], 'a')]),
+      str(rec[F.from]) ? el('div', { class: 'profile__from', text: '📍 ' + str(rec[F.from]) }) : null,
+    ]),
+    chips.length ? el('div', { class: 'chips' }, chips) : null,
+    links.length ? el('div', { class: 'card__links profile__links' }, links) : null,
+    str(rec[F.bio]) ? el('div', { class: 'profile__notes' }, [
+      el('div', { class: 'field__label', text: 'Notes' }),
+      el('p', { class: 'profile__bio', text: str(rec[F.bio]) }),
+    ]) : null,
+    empty ? el('div', { class: 'cal-empty', text: 'No details yet — tap Edit to add some.' }) : null,
+  ]);
+
+  const bar = el('div', { class: 'editor__bar' }, [
+    el('button', { class: 'editor__close', type: 'button', text: 'Close', onclick: closeEditor }),
+    el('div', { class: 'editor__title editor__title--name', text: str(rec[F.artist]) || 'Untitled' }),
+    el('button', { class: 'editor__save', type: 'button', text: 'Edit', onclick: function () { showEdit(false); } }),
+  ]);
+
+  swapSheet(bar, body);
+}
+
+// ---- Edit form ----
+function showEdit(isNew) {
+  const rec = editing;
+  const persisted = state.rows.some(function (r) { return r.id === rec.id; });
+
+  const mRater = rater('My rating (M)', F.m, rec[F.m]);
+  const aRater = rater('Her rating (A)', F.a, rec[F.a]);
+  const setTimeCtl = setTimeControl(rec[F.setTime]);
 
   // Text/URL/textarea fields; keep their wrappers so we can read inputs directly.
   const fields = [
-    field('Artist', F.artist, editing[F.artist], { placeholder: 'Artist / act name' }),
-    field('Stage', F.stage, editing[F.stage], { placeholder: 'e.g. Wooo, La Playa…' }),
-    field('Style', F.style, editing[F.style], { placeholder: 'Genre / vibe' }),
-    field('From', F.from, editing[F.from], { placeholder: 'City / country' }),
-    field('Instagram', F.ig, editing[F.ig], { placeholder: '@handle or URL' }),
-    field('Resident Advisor', F.ra, editing[F.ra], { placeholder: 'RA profile URL' }),
-    field('Best DJ set', F.bestSet, editing[F.bestSet], { placeholder: 'Link to a set' }),
-    field('Notes / biography', F.bio, editing[F.bio], { textarea: true, placeholder: 'Notes, why we like them…' }),
+    field('Artist', F.artist, rec[F.artist], { placeholder: 'Artist / act name' }),
+    field('Stage', F.stage, rec[F.stage], { placeholder: 'e.g. Wooo, La Playa…' }),
+    field('Style', F.style, rec[F.style], { placeholder: 'Genre / vibe' }),
+    field('From', F.from, rec[F.from], { placeholder: 'City / country' }),
+    field('Instagram', F.ig, rec[F.ig], { placeholder: '@handle or URL' }),
+    field('Resident Advisor', F.ra, rec[F.ra], { placeholder: 'RA profile URL' }),
+    field('Best DJ set', F.bestSet, rec[F.bestSet], { placeholder: 'Link to a set' }),
+    field('Notes / biography', F.bio, rec[F.bio], { textarea: true, placeholder: 'Notes, why we like them…' }),
   ];
   const inputs = {};
   fields.forEach(function (w) { inputs[w._key] = w._input; });
@@ -465,18 +527,14 @@ function openEditor(id) {
   ]);
 
   const bar = el('div', { class: 'editor__bar' }, [
-    el('button', { class: 'editor__close', type: 'button', text: 'Cancel', onclick: closeEditor }),
+    el('button', { class: 'editor__close', type: 'button', text: 'Cancel',
+      onclick: function () { if (persisted) showView(); else closeEditor(); } }),
     el('div', { class: 'editor__title', text: isNew ? 'New DJ' : 'Edit' }),
     el('button', { class: 'editor__save', type: 'button', text: 'Save',
       onclick: function () { saveEditor(inputs, setTimeCtl, mRater, aRater); } }),
   ]);
 
-  const editor = $('#editor');
-  editor.innerHTML = '';
-  editor.appendChild(bar);
-  editor.appendChild(body);
-  editor.hidden = false;
-  document.body.style.overflow = 'hidden';
+  swapSheet(bar, body);
 }
 
 function closeEditor() {
@@ -506,7 +564,8 @@ async function saveEditor(inputs, setTimeCtl, mRater, aRater) {
   if (idx > -1) state.rows[idx] = rec; else state.rows.push(rec);
   await idbPut(rec);
   render();
-  closeEditor();
+  // Return to the read-only profile so the saved result (and links) are shown.
+  if (editing === rec) showView();
 
   if (navigator.onLine && IS_CONFIGURED) {
     syncNow();
@@ -638,7 +697,7 @@ async function boot() {
   $('#sort').addEventListener('change', function (e) { state.sort = e.target.value; render(); });
   $('#tabList').addEventListener('click', function () { state.view = 'list'; render(); });
   $('#tabCalendar').addEventListener('click', function () { state.view = 'calendar'; render(); });
-  $('#addBtn').addEventListener('click', function () { openEditor(null); });
+  $('#addBtn').addEventListener('click', function () { openDetail(null); });
   $('#syncPill').addEventListener('click', function () { syncNow({ userInitiated: true }); });
 
   window.addEventListener('online', function () { setStatus('syncing'); syncNow(); });

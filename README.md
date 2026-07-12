@@ -98,7 +98,9 @@ Artist | M | A | From | Style | Biography | Best DJ Set | Resident Advisor | Ins
 - **Calendar** view (top tab) groups every DJ that has a set time under each
   festival day (Jul 30 – Aug 2, 2026), ordered by time — the day-by-day running
   order. Tap any entry to edit it.
-- **Tap a card** to edit; **＋** adds a new DJ.
+- **Tap a card** to open a **read-only profile** (ratings, set time, stage,
+  style, notes, and tappable **Instagram / Resident Advisor / Best set**
+  links). Hit **Edit** to change anything; **＋** adds a new DJ.
 - Edits save **instantly and offline**. A small dot on a card = not yet synced.
   The pill in the top bar shows sync status (Offline / Syncing / Synced) — tap
   it to force a refresh.
