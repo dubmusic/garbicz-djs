@@ -5,7 +5,7 @@
    Bump CACHE_VERSION whenever the shell files change.
    ============================================================ */
 
-const CACHE_VERSION = 'garbicz-v3';
+const CACHE_VERSION = 'garbicz-v4';
 const SHELL = [
   './',
   './index.html',

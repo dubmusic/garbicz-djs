@@ -11,16 +11,16 @@ import sys
 
 W = H = 512
 
-# Earthy Garbicz palette
-SKY_TOP = (58, 82, 66)      # #3A5242 muted forest sky
-SKY_HORIZON = (40, 60, 48)  # #283C30 deeper at horizon
-SUN = (226, 168, 74)        # #E2A84A warm ochre sun
-SUN_GLOW = (238, 197, 128)  # #EEC580
-HILL_BACK = (58, 84, 58)    # #3A543A
-HILL_FRONT = (44, 66, 46)   # #2C422E
-LAKE = (52, 78, 74)         # #344E4A teal-tinted water
-LAKE_SHIMMER = (86, 116, 108)
-CREAM = (245, 236, 214)     # #F5ECD6 horizon line
+# Dark Garbicz '26 palette (placeholder until the neon logo art is supplied)
+SKY_TOP = (46, 26, 78)      # #2E1A4E deep violet sky
+SKY_HORIZON = (26, 14, 42)  # #1A0E2A deeper indigo at horizon
+SUN = (226, 85, 166)        # #E255A6 magenta sun
+SUN_GLOW = (255, 138, 205)  # #FF8ACD
+HILL_BACK = (74, 42, 118)   # #4A2A76 violet
+HILL_FRONT = (44, 26, 78)   # #2C1A4E darker violet
+LAKE = (30, 18, 60)         # #1E123C indigo water
+LAKE_SHIMMER = (139, 92, 255)
+CREAM = (240, 210, 240)     # pale magenta horizon line
 
 HORIZON = 322  # y of waterline
 
@@ -36,7 +36,7 @@ def set_px(x, y, color, alpha=1.0):
             px[y][x] = list(color)
         else:
             cur = px[y][x]
-            px[y][x] = [int(round(cur[i] + (color[i] - cur[i]) * alpha)) for i in range(3)]
+            px[y][x] = [max(0, min(255, int(round(cur[i] + (color[i] - cur[i]) * alpha)))) for i in range(3)]
 
 # 1) Sky gradient (top -> horizon)
 for y in range(0, HORIZON):
@@ -115,11 +115,11 @@ def pine(cx, base_y, size, color):
     # trunk
     for y in range(base_y, base_y + 5):
         for x in range(cx - 2, cx + 2):
-            set_px(x, y, (46, 40, 30))
+            set_px(x, y, (70, 40, 90))
 
 for tx in (118, 176, 250, 358, 430):
     ridge = int(HORIZON - 40 * (0.5 + 0.5 * math.sin(2.1 * (tx / W) * math.pi * 2 + 2.4)))
-    pine(tx, ridge + 6, 34, (30, 48, 34))
+    pine(tx, ridge + 6, 34, (26, 14, 48))
 
 # --- encode PNG ---
 def write_png(path, pixels):
