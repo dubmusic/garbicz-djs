@@ -50,24 +50,29 @@ const $ = function (sel) { return document.querySelector(sel); };
 ------------------------------------------------------------------------- */
 const DB_NAME = 'garbicz-djs';
 const STORE = 'djs';
+const STAGE_STORE = 'stages';   // keyed by stage name
 let _dbPromise = null;
 
 function db() {
   if (_dbPromise) return _dbPromise;
   _dbPromise = new Promise(function (resolve, reject) {
-    const req = indexedDB.open(DB_NAME, 1);
+    const req = indexedDB.open(DB_NAME, 2);
     req.onupgradeneeded = function () {
       const d = req.result;
       if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE, { keyPath: 'id' });
+      if (!d.objectStoreNames.contains(STAGE_STORE)) d.createObjectStore(STAGE_STORE, { keyPath: 'Stage' });
     };
     req.onsuccess = function () { resolve(req.result); };
     req.onerror = function () { reject(req.error); };
   });
   return _dbPromise;
 }
-function tx(mode) { return db().then(function (d) { return d.transaction(STORE, mode).objectStore(STORE); }); }
-function idbGetAll() {
-  return tx('readonly').then(function (s) {
+function tx(mode, store) {
+  const name = store || STORE;
+  return db().then(function (d) { return d.transaction(name, mode).objectStore(name); });
+}
+function idbGetAll(store) {
+  return tx('readonly', store).then(function (s) {
     return new Promise(function (res, rej) {
       const r = s.getAll();
       r.onsuccess = function () { res(r.result || []); };
@@ -75,8 +80,8 @@ function idbGetAll() {
     });
   });
 }
-function idbPut(rec) {
-  return tx('readwrite').then(function (s) {
+function idbPut(rec, store) {
+  return tx('readwrite', store).then(function (s) {
     return new Promise(function (res, rej) {
       const r = s.put(rec);
       r.onsuccess = function () { res(); };
@@ -84,8 +89,8 @@ function idbPut(rec) {
     });
   });
 }
-function idbDelete(id) {
-  return tx('readwrite').then(function (s) {
+function idbDelete(id, store) {
+  return tx('readwrite', store).then(function (s) {
     return new Promise(function (res, rej) {
       const r = s.delete(id);
       r.onsuccess = function () { res(); };
@@ -97,11 +102,18 @@ function idbDelete(id) {
 /* ---------- 4. App state ------------------------------------------------ */
 const state = {
   rows: [],            // array of records (from IDB)
-  view: 'list',        // 'list' | 'calendar'
+  stages: [],          // [{ Stage, lat, lng, accuracy, lastModified, _dirty }]
+  view: 'list',        // 'list' | 'calendar' | 'map'
   search: '',
   sort: 'artist',
   status: 'offline',   // offline | syncing | online | error
   lastPull: 0,
+  // Location / compass (map view only, started on demand to save battery)
+  pos: null,           // { lat, lng, acc, t }
+  geoError: null,
+  geoWatch: null,
+  heading: null,       // degrees from true north, when the compass is enabled
+  compass: 'off',      // off | on | denied | unsupported
 };
 
 /* ---------- 5. Sync status UI ------------------------------------------- */
@@ -194,6 +206,46 @@ function formatSetTimeChip(v) {
   if (!p.day) return str(v); // empty, or legacy free text — show as-is
   const label = formatDayLabel(p.day, false);
   return p.time ? label + ' · ' + p.time : label;
+}
+
+/* ---------- 6c. Geo helpers ----------------------------------------------
+   All of this is pure math on two coordinates — it needs no network, which is
+   why the map keeps working with no signal at the festival.
+------------------------------------------------------------------------- */
+const R_EARTH = 6371000; // metres
+const toRad = function (d) { return d * Math.PI / 180; };
+const toDeg = function (r) { return r * 180 / Math.PI; };
+
+/** Great-circle distance in metres. */
+function distanceM(a, b) {
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const la1 = toRad(a.lat), la2 = toRad(b.lat);
+  const h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return 2 * R_EARTH * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/** Initial bearing from a to b, degrees clockwise from true north. */
+function bearingDeg(a, b) {
+  const la1 = toRad(a.lat), la2 = toRad(b.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const y = Math.sin(dLng) * Math.cos(la2);
+  const x = Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dLng);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+function formatDistance(m) {
+  if (m == null) return '';
+  if (m < 1000) return Math.round(m / 5) * 5 + ' m';
+  return (m / 1000).toFixed(m < 10000 ? 1 : 0) + ' km';
+}
+
+function stageCoords(stage) {
+  const lat = parseFloat(stage && stage.lat);
+  const lng = parseFloat(stage && stage.lng);
+  if (isNaN(lat) || isNaN(lng)) return null;
+  return { lat: lat, lng: lng };
 }
 
 /* ---------- 7. Render list ---------------------------------------------- */
@@ -296,12 +348,24 @@ function renderList() {
 
 /* Dispatch between the list and calendar views, and sync the chrome. */
 function render() {
-  const isCal = state.view === 'calendar';
-  const tb = $('.toolbar'); if (tb) tb.classList.toggle('is-calendar', isCal);
-  const tl = $('#tabList'), tc = $('#tabCalendar');
-  if (tl) tl.classList.toggle('is-active', !isCal);
-  if (tc) tc.classList.toggle('is-active', isCal);
-  if (isCal) renderCalendar(); else renderList();
+  const view = state.view;
+  const tb = $('.toolbar');
+  if (tb) {
+    tb.classList.toggle('is-calendar', view === 'calendar');
+    tb.hidden = (view === 'map');   // search/sort don't apply to the map
+  }
+  const tabs = { list: $('#tabList'), calendar: $('#tabCalendar'), map: $('#tabMap') };
+  for (const k in tabs) if (tabs[k]) tabs[k].classList.toggle('is-active', k === view);
+
+  const fab = $('#addBtn');
+  if (fab) fab.hidden = (view === 'map');   // adding DJs is a list action
+
+  // Location only runs while the map is open.
+  if (view === 'map') startGeo(); else stopGeo();
+
+  if (view === 'map') renderMap();
+  else if (view === 'calendar') renderCalendar();
+  else renderList();
 }
 
 function matchesSearch(r) {
@@ -377,6 +441,182 @@ function renderCalendar() {
       el('div', { class: 'state__hint', text: 'No scheduled DJs match “' + state.search + '”.' }),
     ]), list.firstChild);
   }
+}
+
+/* ---------- 7b. Map view -------------------------------------------------
+   Location and compass run only while this view is open (battery), and every
+   capture is stored locally first — so pinning stages works with no signal.
+------------------------------------------------------------------------- */
+function startGeo() {
+  if (!navigator.geolocation) { state.geoError = 'This device has no location support.'; return; }
+  if (state.geoWatch != null) return;
+  state.geoWatch = navigator.geolocation.watchPosition(
+    function (p) {
+      state.pos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, t: Date.now() };
+      state.geoError = null;
+      if (state.view === 'map') renderMap();
+    },
+    function (err) {
+      state.geoError = err.code === 1
+        ? 'Location permission denied — enable it in Settings to pin stages.'
+        : 'Waiting for GPS… (go outside for a faster fix)';
+      if (state.view === 'map') renderMap();
+    },
+    { enableHighAccuracy: true, maximumAge: 3000, timeout: 25000 }
+  );
+}
+function stopGeo() {
+  if (state.geoWatch != null) { navigator.geolocation.clearWatch(state.geoWatch); state.geoWatch = null; }
+}
+
+function onOrientation(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
+    h = e.webkitCompassHeading;               // iOS: already relative to true north
+  } else if (e.absolute && typeof e.alpha === 'number') {
+    h = (360 - e.alpha) % 360;                // Android / standards path
+  }
+  if (h == null) return;
+  state.heading = h;
+  state.compass = 'on';
+  if (state.view === 'map') updateArrows();
+}
+
+async function enableCompass() {
+  try {
+    const DOE = window.DeviceOrientationEvent;
+    if (!DOE) { state.compass = 'unsupported'; renderMap(); return; }
+    // iOS 13+ requires an explicit grant, triggered by a user gesture.
+    if (typeof DOE.requestPermission === 'function') {
+      const res = await DOE.requestPermission();
+      if (res !== 'granted') { state.compass = 'denied'; renderMap(); return; }
+    }
+    window.addEventListener('deviceorientation', onOrientation, true);
+    window.addEventListener('deviceorientationabsolute', onOrientation, true);
+    state.compass = 'on';
+    // If no reading arrives shortly, the sensor is not usable here.
+    setTimeout(function () {
+      if (state.heading == null) { state.compass = 'unsupported'; renderMap(); }
+    }, 2500);
+    renderMap();
+  } catch (err) {
+    state.compass = 'denied';
+    renderMap();
+  }
+}
+
+/** Rotates just the arrows, so compass updates don't rebuild the whole list. */
+function updateArrows() {
+  const arrows = document.querySelectorAll('.stage-row__arrow');
+  for (let i = 0; i < arrows.length; i++) {
+    const b = parseFloat(arrows[i].getAttribute('data-bearing'));
+    if (isNaN(b)) continue;
+    const rot = state.heading == null ? b : (b - state.heading + 360) % 360;
+    arrows[i].style.transform = 'rotate(' + rot + 'deg)';
+  }
+}
+
+async function captureStage(name) {
+  if (!state.pos) { toast('No GPS fix yet — wait a moment and try again', 'warn'); return; }
+  let rec = state.stages.find(function (s) { return s.Stage === name; });
+  if (!rec) { rec = { Stage: name }; state.stages.push(rec); }
+  rec.lat = state.pos.lat;
+  rec.lng = state.pos.lng;
+  rec.accuracy = Math.round(state.pos.acc);
+  rec._dirty = true;
+  rec._clientModified = Date.now();
+  if (rec.lastModified == null) rec.lastModified = 0;
+
+  await idbPut(rec, STAGE_STORE);
+  renderMap();
+  toast(name + ' pinned (±' + Math.round(state.pos.acc) + ' m)', 'good');
+  if (navigator.onLine && IS_CONFIGURED) syncNow();
+}
+
+function stageRow(stage) {
+  const coords = stageCoords(stage);
+  const here = state.pos;
+  const dist = (coords && here) ? distanceM(here, coords) : null;
+  const bear = (coords && here) ? bearingDeg(here, coords) : null;
+
+  const arrow = el('div', {
+    class: 'stage-row__arrow' + (bear == null ? ' is-idle' : ''),
+    'data-bearing': bear == null ? '' : String(bear),
+  }, [svg('<path d="M12 2l7 19-7-5-7 5z"/>')]);
+  if (bear != null) {
+    const rot = state.heading == null ? bear : (bear - state.heading + 360) % 360;
+    arrow.style.transform = 'rotate(' + rot + 'deg)';
+  }
+
+  const meta = coords
+    ? (dist == null ? 'Pinned · waiting for your position' : formatDistance(dist) + ' away')
+    : 'No location yet';
+
+  return el('div', { class: 'stage-row' }, [
+    arrow,
+    el('div', { class: 'stage-row__main' }, [
+      el('span', { class: 'stage-row__name', text: stage.Stage }),
+      el('span', { class: 'stage-row__meta' + (coords ? '' : ' is-empty'), text: meta }),
+    ]),
+    el('button', {
+      class: 'stage-row__btn' + (coords ? ' is-set' : ''),
+      type: 'button',
+      text: coords ? 'Update' : 'Set here',
+      onclick: function () { captureStage(stage.Stage); },
+    }),
+    stage._dirty ? el('span', { class: 'card__pending', title: 'Not yet synced' }) : null,
+  ]);
+}
+
+function renderMap() {
+  const list = $('#list');
+  list.innerHTML = '';
+
+  // GPS status
+  const pos = state.pos;
+  const fixText = pos
+    ? 'Location found · accurate to about ' + Math.round(pos.acc) + ' m'
+    : (state.geoError || 'Getting your location…');
+  list.appendChild(el('div', { class: 'geo-card' }, [
+    el('div', { class: 'geo-card__row' }, [
+      el('span', { class: 'geo-dot' + (pos ? ' is-live' : '') }),
+      el('span', { class: 'geo-card__text', text: fixText }),
+    ]),
+    pos ? el('div', { class: 'geo-card__coords', text: pos.lat.toFixed(5) + ', ' + pos.lng.toFixed(5) }) : null,
+    // Compass state / enable button
+    state.compass === 'on'
+      ? el('div', { class: 'geo-card__hint', text: state.heading == null
+          ? 'Compass on · waiting for a heading…'
+          : 'Compass on · facing ' + Math.round(state.heading) + '°' })
+      : el('button', {
+          class: 'geo-card__enable', type: 'button',
+          text: state.compass === 'denied' ? 'Compass blocked — tap to retry'
+            : state.compass === 'unsupported' ? 'Compass unavailable — tap to retry'
+            : 'Enable compass arrows',
+          onclick: enableCompass,
+        }),
+    el('div', { class: 'geo-card__hint', text: 'Walk to a stage and tap “Set here”. Works offline — pins sync when you get signal.' }),
+  ]));
+
+  // One row per stage: known stages first, then any extras from the sheet.
+  const byName = {};
+  state.stages.forEach(function (s) { byName[s.Stage] = s; });
+  const ordered = STAGES.map(function (n) { return byName[n] || { Stage: n }; });
+  state.stages.forEach(function (s) {
+    if (STAGES.indexOf(s.Stage) === -1) ordered.push(s);
+  });
+
+  // Nearest first once we have a fix, so the closest stage is at the top.
+  if (state.pos) {
+    ordered.sort(function (a, b) {
+      const ca = stageCoords(a), cb = stageCoords(b);
+      if (ca && cb) return distanceM(state.pos, ca) - distanceM(state.pos, cb);
+      if (ca) return -1;
+      if (cb) return 1;
+      return a.Stage.localeCompare(b.Stage);
+    });
+  }
+  ordered.forEach(function (s) { list.appendChild(stageRow(s)); });
 }
 
 /* ---------- 8. Editor --------------------------------------------------- */
@@ -689,18 +929,49 @@ async function pull() {
   }
 
   state.rows = merged;
+
+  // Stages: same rule — a local capture that hasn't been pushed yet wins.
+  if (data.stages) {
+    const localStage = {};
+    state.stages.forEach(function (s) { localStage[s.Stage] = s; });
+    const mergedStages = [];
+    for (const s of data.stages) {
+      const local = localStage[s.Stage];
+      if (local && local._dirty) { mergedStages.push(local); continue; }
+      s._dirty = false; s._clientModified = null;
+      mergedStages.push(s);
+      await idbPut(s, STAGE_STORE);
+    }
+    // Keep any stage the server did not return. Unlike DJ rows, stages are
+    // seeded and never deleted upstream, so a missing one means "not synced
+    // yet", never "deleted" — dropping it would lose a capture.
+    state.stages.forEach(function (s) {
+      if (!data.stages.some(function (d) { return d.Stage === s.Stage; })) mergedStages.push(s);
+    });
+    state.stages = mergedStages;
+  }
+
   render();
 }
 
 async function pushDirty() {
   const dirty = state.rows.filter(function (r) { return r._dirty; });
-  if (!dirty.length) return;
+  const dirtyStages = state.stages.filter(function (s) { return s._dirty; });
+  if (!dirty.length && !dirtyStages.length) return;
 
-  const payload = { rows: dirty.map(function (r) {
-    const out = { id: r.id, clientModified: r._clientModified || Date.now() };
-    USER_FIELDS.forEach(function (k) { out[k] = r[k] != null ? r[k] : ''; });
-    return out;
-  }) };
+  const payload = {
+    rows: dirty.map(function (r) {
+      const out = { id: r.id, clientModified: r._clientModified || Date.now() };
+      USER_FIELDS.forEach(function (k) { out[k] = r[k] != null ? r[k] : ''; });
+      return out;
+    }),
+    stages: dirtyStages.map(function (s) {
+      return {
+        Stage: s.Stage, lat: s.lat, lng: s.lng, accuracy: s.accuracy,
+        clientModified: s._clientModified || Date.now(),
+      };
+    }),
+  };
 
   // Content-Type text/plain keeps this a CORS "simple request" (no preflight),
   // which Apps Script web apps handle. The backend JSON.parse()s the body anyway.
@@ -712,6 +983,24 @@ async function pushDirty() {
   });
   const data = await res.json();
   if (!data || !data.ok) throw new Error('POST not ok');
+
+  // Stage capture results (same last-write-wins handling as the rows).
+  for (const sr of (data.stageResults || [])) {
+    const local = state.stages.find(function (s) { return s.Stage === sr.Stage; });
+    if (!local) continue;
+    if (sr.status === 'conflict' && sr.server) {
+      const srv = sr.server;
+      srv._dirty = false; srv._clientModified = null;
+      state.stages[state.stages.indexOf(local)] = srv;
+      await idbPut(srv, STAGE_STORE);
+      toast(sr.Stage + ' was pinned by someone else — kept their location', 'warn');
+    } else {
+      local._dirty = false;
+      local._clientModified = null;
+      if (sr.lastModified != null) local.lastModified = sr.lastModified;
+      await idbPut(local, STAGE_STORE);
+    }
+  }
 
   const byId = {};
   state.rows.forEach(function (r) { byId[r.id] = r; });
@@ -754,6 +1043,7 @@ async function boot() {
   $('#sort').addEventListener('change', function (e) { state.sort = e.target.value; render(); });
   $('#tabList').addEventListener('click', function () { state.view = 'list'; render(); });
   $('#tabCalendar').addEventListener('click', function () { state.view = 'calendar'; render(); });
+  $('#tabMap').addEventListener('click', function () { state.view = 'map'; render(); });
   $('#addBtn').addEventListener('click', function () { openDetail(null); });
   $('#syncPill').addEventListener('click', function () { syncNow({ userInitiated: true }); });
 
@@ -765,6 +1055,7 @@ async function boot() {
 
   // 1) Instant render from cache
   try { state.rows = await idbGetAll(); } catch (e) { state.rows = []; }
+  try { state.stages = await idbGetAll(STAGE_STORE); } catch (e) { state.stages = []; }
   render();
   setStatus(navigator.onLine ? 'online' : 'offline', navigator.onLine ? '' : 'Offline');
 

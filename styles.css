@@ -406,6 +406,84 @@ input, select, textarea { font-family: inherit; }
 .cal-tag--m { background: rgba(226, 85, 166, 0.20); color: var(--magenta-2); }
 .cal-tag--a { background: rgba(139, 92, 255, 0.22); color: var(--violet-2); }
 
+/* ---------- Map / stages view ---------- */
+.geo-card {
+  background: linear-gradient(180deg, var(--surface-top), var(--surface-2));
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.geo-card__row { display: flex; align-items: center; gap: 10px; }
+.geo-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--muted); flex: 0 0 auto;
+}
+.geo-dot.is-live { background: var(--good); box-shadow: 0 0 0 4px rgba(67,197,158,0.18); }
+.geo-card__text { font-size: 14px; font-weight: 600; color: var(--text); }
+.geo-card__coords {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.geo-card__hint { margin-top: 10px; font-size: 12.5px; color: var(--text-soft); line-height: 1.45; }
+.geo-card__enable {
+  margin-top: 12px;
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(120deg, var(--magenta), var(--violet));
+  box-shadow: 0 4px 14px rgba(226,85,166,0.35);
+}
+
+.stage-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  margin-bottom: 10px;
+  background: linear-gradient(180deg, var(--surface-top), var(--surface-2));
+  border: 1.5px solid var(--line);
+  border-radius: 16px;
+}
+.stage-row__arrow {
+  flex: 0 0 auto;
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  transition: transform 0.2s ease-out;
+}
+.stage-row__arrow svg { width: 26px; height: 26px; fill: var(--magenta-2); }
+.stage-row__arrow.is-idle svg { fill: var(--muted); opacity: 0.45; }
+.stage-row__main { flex: 1 1 auto; min-width: 0; }
+.stage-row__name {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+}
+.stage-row__meta { display: block; margin-top: 2px; font-size: 12.5px; color: var(--violet-2); font-weight: 600; }
+.stage-row__meta.is-empty { color: var(--muted); font-weight: 500; font-style: italic; }
+.stage-row__btn {
+  flex: 0 0 auto;
+  padding: 9px 13px;
+  border-radius: 11px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(120deg, var(--magenta), var(--violet));
+}
+.stage-row__btn.is-set {
+  background: var(--input-bg);
+  color: var(--text-soft);
+  border: 1.5px solid var(--line);
+}
+
 /* ---------- FAB ---------- */
 .fab {
   position: fixed;

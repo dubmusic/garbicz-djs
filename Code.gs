@@ -18,6 +18,15 @@
 
 const SHEET_NAME = 'DJs'; // adjust to your tab name if different
 
+// Second tab holding one row per stage with its GPS position. Created and
+// seeded automatically on first run; coordinates are captured in the app.
+const STAGES_SHEET_NAME = 'Stages';
+const STAGE_HEADERS = ['Stage', 'lat', 'lng', 'accuracy', 'lastModified'];
+const STAGE_NAMES = [
+  'Wald', 'Wiese', 'Buk Corner', 'See', 'Loco Paradiso',
+  'Pleasure Island', 'Juicy', 'Ambient Floor', 'Wein Bar'
+];
+
 // Your visible columns, in order.
 const USER_HEADERS = [
   'Artist', 'M', 'A', 'From', 'Style',
@@ -137,6 +146,115 @@ function readRows_(sheet) {
   return rows;
 }
 
+/* ---------- Stages tab -------------------------------------------------- */
+
+/**
+ * Returns the Stages sheet, creating it (with headers and one row per known
+ * stage) if it does not exist yet. Rows are keyed by stage name.
+ */
+function getStagesSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(STAGES_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(STAGES_SHEET_NAME);
+    sheet.getRange(1, 1, 1, STAGE_HEADERS.length).setValues([STAGE_HEADERS]);
+  }
+  if (sheet.getLastRow() < 1 || String(sheet.getRange(1, 1).getValue()) === '') {
+    sheet.getRange(1, 1, 1, STAGE_HEADERS.length).setValues([STAGE_HEADERS]);
+  }
+
+  // Seed any known stage that has no row yet (never removes or renames rows).
+  const existing = {};
+  if (sheet.getLastRow() > 1) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().forEach(function (r) {
+      const name = String(r[0]).trim();
+      if (name) existing[name] = true;
+    });
+  }
+  STAGE_NAMES.forEach(function (name) {
+    if (!existing[name]) sheet.appendRow([name, '', '', '', '']);
+  });
+  return sheet;
+}
+
+/** Reads the Stages tab as [{ Stage, lat, lng, accuracy, lastModified }]. */
+function readStages_(sheet) {
+  if (sheet.getLastRow() < 2) return [];
+  const values = sheet.getRange(1, 1, sheet.getLastRow(), STAGE_HEADERS.length).getValues();
+  const header = values[0].map(String);
+  const out = [];
+  for (let i = 1; i < values.length; i++) {
+    const name = String(values[i][header.indexOf('Stage')]).trim();
+    if (!name) continue;
+    const obj = {};
+    header.forEach(function (key, idx) {
+      let val = values[i][idx];
+      if (key === 'lastModified' && val instanceof Date) val = val.getTime();
+      obj[key] = val;
+    });
+    out.push(obj);
+  }
+  return out;
+}
+
+/**
+ * Applies incoming stage coordinate updates, keyed by stage name.
+ * Same last-write-wins rule as the DJ rows.
+ */
+function writeStages_(sheet, incoming, now) {
+  const results = [];
+  if (!incoming || !incoming.length) return results;
+
+  const lastRow = Math.max(sheet.getLastRow(), 1);
+  const values = sheet.getRange(1, 1, lastRow, STAGE_HEADERS.length).getValues();
+  const header = values[0].map(String);
+  const nameCol = header.indexOf('Stage');
+  const modCol = header.indexOf('lastModified');
+
+  const nameToRow = {};
+  for (let i = 1; i < values.length; i++) {
+    const n = String(values[i][nameCol]).trim();
+    if (n) nameToRow[n] = i + 1;
+  }
+
+  incoming.forEach(function (item) {
+    const name = String(item.Stage || '').trim();
+    if (!name) return;
+    let rowNum = nameToRow[name];
+
+    // Unknown stage name -> append it rather than dropping the capture.
+    if (!rowNum) {
+      sheet.appendRow([name, '', '', '', '']);
+      rowNum = sheet.getLastRow();
+    }
+
+    let serverMod = values[rowNum - 1] ? values[rowNum - 1][modCol] : 0;
+    if (serverMod instanceof Date) serverMod = serverMod.getTime();
+    serverMod = Number(serverMod) || 0;
+    const clientMod = Number(item.clientModified) || 0;
+
+    if (clientMod < serverMod) {
+      const current = {};
+      header.forEach(function (key, idx) {
+        let val = values[rowNum - 1][idx];
+        if (key === 'lastModified' && val instanceof Date) val = val.getTime();
+        current[key] = val;
+      });
+      results.push({ Stage: name, status: 'conflict', server: current });
+      return;
+    }
+
+    header.forEach(function (key, idx) {
+      if (key === 'Stage') return;
+      const val = (key === 'lastModified') ? now
+        : (item[key] != null && item[key] !== '' ? item[key] : '');
+      sheet.getRange(rowNum, idx + 1).setValue(val);
+    });
+    results.push({ Stage: name, status: 'updated', lastModified: now });
+  });
+  return results;
+}
+
 /** GET: returns all DJ rows as JSON (also ensures schema + ids on first run). */
 function doGet() {
   const lock = LockService.getScriptLock();
@@ -145,7 +263,12 @@ function doGet() {
     const sheet = getSheet_();
     const header = ensureSchema_(sheet);
     ensureIds_(sheet, header);
-    return jsonOutput_({ ok: true, rows: readRows_(sheet), serverTime: Date.now() });
+    return jsonOutput_({
+      ok: true,
+      rows: readRows_(sheet),
+      stages: readStages_(getStagesSheet_()),
+      serverTime: Date.now(),
+    });
   } finally {
     lock.releaseLock();
   }
@@ -246,7 +369,17 @@ function doPost(e) {
       results.push({ id: id, status: 'updated', lastModified: now });
     });
 
-    return jsonOutput_({ ok: true, results: results, serverTime: now });
+    // Stage coordinate captures travel alongside the DJ rows.
+    const stageResults = (body && body.stages && body.stages.length)
+      ? writeStages_(getStagesSheet_(), body.stages, now)
+      : [];
+
+    return jsonOutput_({
+      ok: true,
+      results: results,
+      stageResults: stageResults,
+      serverTime: now,
+    });
   } catch (err) {
     return jsonOutput_({ ok: false, error: String(err) });
   } finally {
