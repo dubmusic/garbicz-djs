@@ -490,7 +490,7 @@ input, select, textarea { font-family: inherit; }
 .field__row .field { flex: 1 1 0; }
 /* Make native pickers (date/time) legible on the dark theme */
 .field__input[type="time"] { color-scheme: dark; }
-.sort__select, .st__day { color-scheme: dark; }
+.sort__select, .st__day, .stage-select { color-scheme: dark; }
 
 /* Set-time control: day dropdown + 24h time */
 .st { display: flex; gap: 10px; }

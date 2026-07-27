@@ -139,6 +139,13 @@ function webUrl(v) {
 const FESTIVAL_DAYS = ['2026-07-30', '2026-07-31', '2026-08-01', '2026-08-02'];
 const FESTIVAL_TZ = 'Europe/Warsaw';
 
+/* The festival's stages. Editing picks from this list so stage names stay
+   consistent (which also lets them be matched to map coordinates later). */
+const STAGES = [
+  'Wald', 'Wiese', 'Buk Corner', 'See', 'Loco Paradiso',
+  'Pleasure Island', 'Juicy', 'Ambient Floor', 'Wein Bar',
+];
+
 // Safety net for values that came back as a UTC instant rather than wall-clock
 // text (Sheets used to coerce "Set Time" into a real date, which JSON encodes
 // as e.g. "2026-07-30T21:30:00.000Z"). Re-express those in festival local time
@@ -457,6 +464,27 @@ function setTimeControl(value) {
 
 // Open a DJ: existing rows show the read-only profile first; new rows go
 // straight to the edit form.
+// Stage picker. Any value already in the sheet that is not one of STAGES is
+// kept as an extra option so existing data is never silently dropped.
+function stageControl(value) {
+  const current = str(value);
+  const sel = el('select', { class: 'field__input stage-select' }, [
+    el('option', { value: '', text: '— no stage —' }),
+  ]);
+  STAGES.forEach(function (s) { sel.appendChild(el('option', { value: s, text: s })); });
+  if (current && STAGES.indexOf(current) === -1) {
+    sel.appendChild(el('option', { value: current, text: current + ' (not a listed stage)' }));
+  }
+  sel.value = current;
+
+  const wrap = el('div', { class: 'field' }, [
+    el('label', { class: 'field__label', text: 'Stage' }),
+    sel,
+  ]);
+  wrap._read = function () { return sel.value; };
+  return wrap;
+}
+
 function openDetail(id) {
   const isNew = !id;
   editing = isNew
@@ -524,31 +552,37 @@ function showEdit(isNew) {
   const rec = editing;
   const persisted = state.rows.some(function (r) { return r.id === rec.id; });
 
+  // Non-text controls expose a _read() instead of an .value.
   const mRater = rater('My rating (M)', F.m, rec[F.m]);
   const aRater = rater('Her rating (A)', F.a, rec[F.a]);
   const setTimeCtl = setTimeControl(rec[F.setTime]);
+  const stageCtl = stageControl(rec[F.stage]);
+  const readers = {};
+  readers[F.setTime] = setTimeCtl._read;
+  readers[F.stage] = stageCtl._read;
+  readers[F.m] = mRater._read;
+  readers[F.a] = aRater._read;
 
   // Text/URL/textarea fields; keep their wrappers so we can read inputs directly.
-  const fields = [
-    field('Artist', F.artist, rec[F.artist], { placeholder: 'Artist / act name' }),
-    field('Stage', F.stage, rec[F.stage], { placeholder: 'e.g. Wooo, La Playa…' }),
-    field('Style', F.style, rec[F.style], { placeholder: 'Genre / vibe' }),
-    field('From', F.from, rec[F.from], { placeholder: 'City / country' }),
-    field('Instagram', F.ig, rec[F.ig], { placeholder: '@handle or URL' }),
-    field('Resident Advisor', F.ra, rec[F.ra], { placeholder: 'RA profile URL' }),
-    field('Best DJ set', F.bestSet, rec[F.bestSet], { placeholder: 'Link to a set' }),
-    field('Notes / biography', F.bio, rec[F.bio], { textarea: true, placeholder: 'Notes, why we like them…' }),
-  ];
+  const fArtist = field('Artist', F.artist, rec[F.artist], { placeholder: 'Artist / act name' });
+  const fStyle = field('Style', F.style, rec[F.style], { placeholder: 'Genre / vibe' });
+  const fFrom = field('From', F.from, rec[F.from], { placeholder: 'City / country' });
+  const fIg = field('Instagram', F.ig, rec[F.ig], { placeholder: '@handle or URL' });
+  const fRa = field('Resident Advisor', F.ra, rec[F.ra], { placeholder: 'RA profile URL' });
+  const fBest = field('Best DJ set', F.bestSet, rec[F.bestSet], { placeholder: 'Link to a set' });
+  const fBio = field('Notes / biography', F.bio, rec[F.bio], { textarea: true, placeholder: 'Notes, why we like them…' });
+
   const inputs = {};
-  fields.forEach(function (w) { inputs[w._key] = w._input; });
+  [fArtist, fStyle, fFrom, fIg, fRa, fBest, fBio].forEach(function (w) { inputs[w._key] = w._input; });
 
   const body = el('div', { class: 'editor__body' }, [
-    fields[0],                                  // Artist
+    fArtist,
     el('div', { class: 'field__row' }, [mRater, aRater]),
-    setTimeCtl,                                 // Set time (day + 24h time)
-    fields[1], fields[2], fields[3],            // stage, style, from
-    fields[4], fields[5], fields[6],            // ig, ra, best set
-    fields[7],                                  // notes
+    setTimeCtl,
+    stageCtl,
+    fStyle, fFrom,
+    fIg, fRa, fBest,
+    fBio,
   ]);
 
   const bar = el('div', { class: 'editor__bar' }, [
@@ -556,7 +590,7 @@ function showEdit(isNew) {
       onclick: function () { if (persisted) showView(); else closeEditor(); } }),
     el('div', { class: 'editor__title', text: isNew ? 'New DJ' : 'Edit' }),
     el('button', { class: 'editor__save', type: 'button', text: 'Save',
-      onclick: function () { saveEditor(inputs, setTimeCtl, mRater, aRater); } }),
+      onclick: function () { saveEditor(inputs, readers); } }),
   ]);
 
   swapSheet(bar, body);
@@ -568,17 +602,15 @@ function closeEditor() {
   editing = null;
 }
 
-async function saveEditor(inputs, setTimeCtl, mRater, aRater) {
+async function saveEditor(inputs, readers) {
   const rec = editing;
   const artist = (inputs[F.artist].value || '').trim();
   if (!artist) { toast('Add an artist name first', 'warn'); return; }
 
   // Pull all text fields from the form into the record (direct refs, so keys
-  // with spaces like "Best DJ Set" work correctly).
+  // with spaces like "Best DJ Set" work correctly), then the pickers/steppers.
   for (const key in inputs) rec[key] = inputs[key].value;
-  rec[F.setTime] = setTimeCtl._read();
-  rec[F.m] = mRater._read();
-  rec[F.a] = aRater._read();
+  for (const key in readers) rec[key] = readers[key]();
 
   rec._dirty = true;
   rec._clientModified = Date.now();
