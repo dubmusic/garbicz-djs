@@ -137,9 +137,34 @@ function webUrl(v) {
    group by day for the calendar. The festival runs Jul 30 – Aug 2, 2026.
 ------------------------------------------------------------------------- */
 const FESTIVAL_DAYS = ['2026-07-30', '2026-07-31', '2026-08-01', '2026-08-02'];
+const FESTIVAL_TZ = 'Europe/Warsaw';
+
+// Safety net for values that came back as a UTC instant rather than wall-clock
+// text (Sheets used to coerce "Set Time" into a real date, which JSON encodes
+// as e.g. "2026-07-30T21:30:00.000Z"). Re-express those in festival local time
+// so a 23:30 set reads as 23:30. Plain wall-clock text is left untouched.
+function isoInstantToWallClock(s) {
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return null;
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: FESTIVAL_TZ,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(d).reduce(function (o, p) { o[p.type] = p.value; return o; }, {});
+    const hh = parts.hour === '24' ? '00' : parts.hour; // some engines emit 24
+    return parts.year + '-' + parts.month + '-' + parts.day + ' ' + hh + ':' + parts.minute;
+  } catch (e) {
+    return null;
+  }
+}
 
 function parseSetTime(v) {
-  const s = str(v);
+  let s = str(v);
+  // Only true instants (trailing Z or ±HH:MM offset) need converting.
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*(Z|[+-]\d{2}:?\d{2})$/.test(s)) {
+    s = isoInstantToWallClock(s) || s;
+  }
   const m = s.match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{1,2}:\d{2}))?/);
   if (!m) return { day: '', time: '' };
   return { day: m[1], time: m[2] || '' };

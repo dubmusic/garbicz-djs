@@ -28,6 +28,11 @@ const USER_HEADERS = [
 // Helper columns the sync logic relies on.
 const META_HEADERS = ['id', 'lastModified'];
 
+// Column that must stay literal text. "Set Time" holds a wall-clock string
+// ("2026-07-30 23:30"); if Sheets is allowed to coerce it into a datetime, the
+// JSON round-trip shifts it by the sheet's UTC offset.
+const TEXT_COLUMN = 'Set Time';
+
 // Full expected header, used only when the sheet is completely empty.
 const HEADERS = USER_HEADERS.concat(META_HEADERS);
 
@@ -83,6 +88,36 @@ function ensureIds_(sheet, header) {
   if (changed) range.setValues(values);
 }
 
+/**
+ * Normalizes a cell value for JSON output.
+ *
+ * Sheets silently coerces datetime-looking text (e.g. "2026-07-30 23:30") into
+ * a real date value. JSON.stringify would then emit that Date as a UTC instant
+ * ("2026-07-30T21:30:00.000Z"), shifting the wall-clock time by the sheet's UTC
+ * offset — a 23:30 set would come back as 21:30. So format any date cell back
+ * to plain wall-clock text in the spreadsheet's own timezone instead.
+ */
+function normalizeValue_(key, val) {
+  if (key === 'lastModified') return (val instanceof Date) ? val.getTime() : val;
+  if (!(val instanceof Date)) return val;
+
+  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+  const text = Utilities.formatDate(val, tz, 'yyyy-MM-dd HH:mm');
+  // Midnight means "day chosen, no time" — that is how the app writes a
+  // day-only value, and Sheets stores it as a date at 00:00. A real 00:00 set
+  // is written as text and never reaches this branch.
+  return text.slice(-5) === '00:00' ? text.slice(0, 10) : text;
+}
+
+/**
+ * Writes a value as literal text: the plain-text number format ('@') stops
+ * Sheets from re-interpreting "2026-07-30 23:30" as a timezone-bearing date.
+ */
+function setTextCell_(cell, val) {
+  cell.setNumberFormat('@');
+  cell.setValue(val === null || val === undefined ? '' : String(val));
+}
+
 /** Reads all rows and returns them as an array of objects keyed by header name. */
 function readRows_(sheet) {
   const values = sheet.getDataRange().getValues();
@@ -95,9 +130,7 @@ function readRows_(sheet) {
     if (row.join('') === '') continue; // skip blank rows
     const obj = {};
     header.forEach(function (key, idx) {
-      let val = row[idx];
-      if (key === 'lastModified' && val instanceof Date) val = val.getTime();
-      obj[key] = val;
+      obj[key] = normalizeValue_(key, row[idx]);
     });
     rows.push(obj);
   }
@@ -168,6 +201,11 @@ function doPost(e) {
           return item[key] != null ? item[key] : '';
         });
         sheet.appendRow(newRow);
+        // Re-write Set Time as literal text (see setTextCell_).
+        const stIdx = header.indexOf(TEXT_COLUMN);
+        if (stIdx > -1 && newRow[stIdx] !== '') {
+          setTextCell_(sheet.getRange(sheet.getLastRow(), stIdx + 1), newRow[stIdx]);
+        }
         results.push({ id: id, status: 'inserted', lastModified: now });
         return;
       }
@@ -182,9 +220,7 @@ function doPost(e) {
         // Server is newer -> server wins, return current version.
         const current = {};
         header.forEach(function (key, idx) {
-          let val = values[rowNum - 1][idx];
-          if (key === 'lastModified' && val instanceof Date) val = val.getTime();
-          current[key] = val;
+          current[key] = normalizeValue_(key, values[rowNum - 1][idx]);
         });
         results.push({ id: id, status: 'conflict', server: current });
         return;
@@ -199,7 +235,13 @@ function doPost(e) {
         } else {
           val = item[key] != null ? item[key] : values[rowNum - 1][idx];
         }
-        sheet.getRange(rowNum, idx + 1).setValue(val);
+        const cell = sheet.getRange(rowNum, idx + 1);
+        if (key === TEXT_COLUMN) {
+          // Also migrates any legacy date cell to text on the next save.
+          setTextCell_(cell, normalizeValue_(key, val));
+        } else {
+          cell.setValue(val);
+        }
       });
       results.push({ id: id, status: 'updated', lastModified: now });
     });
