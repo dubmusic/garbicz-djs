@@ -257,8 +257,28 @@ const ICON = {
   ra: '<path d="M4 4h16v3H4zm0 5h16v3H4zm0 5h10v3H4z"/>',
   play: '<path d="M8 5v14l11-7z"/>',
 };
-function svg(path, cls) {
-  return el('svg', { class: cls || '', viewBox: '0 0 24 24', 'aria-hidden': 'true', html: path });
+/**
+ * Builds an icon.
+ *
+ * SVG must be created in the SVG namespace — document.createElement('svg')
+ * yields an HTMLUnknownElement that never renders, which is why these icons
+ * (and the map arrows) were invisible while the inline SVGs in index.html,
+ * parsed as real SVG by the HTML parser, worked fine.
+ */
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svg(markup, cls) {
+  const node = document.createElementNS(SVG_NS, 'svg');
+  node.setAttribute('viewBox', '0 0 24 24');
+  node.setAttribute('aria-hidden', 'true');
+  if (cls) node.setAttribute('class', cls); // .className is read-only on SVG
+  const re = /<path[^>]*\bd="([^"]+)"/g;
+  let m;
+  while ((m = re.exec(markup)) !== null) {
+    const p = document.createElementNS(SVG_NS, 'path');
+    p.setAttribute('d', m[1]);
+    node.appendChild(p);
+  }
+  return node;
 }
 
 function ratingBadge(value, kind) {
@@ -539,10 +559,12 @@ function stageRow(stage) {
   const dist = (coords && here) ? distanceM(here, coords) : null;
   const bear = (coords && here) ? bearingDeg(here, coords) : null;
 
+  // An arrow only means something once the stage is pinned and we have a fix;
+  // until then show a dimmed pin so the row doesn't look broken.
   const arrow = el('div', {
     class: 'stage-row__arrow' + (bear == null ? ' is-idle' : ''),
     'data-bearing': bear == null ? '' : String(bear),
-  }, [svg('<path d="M12 2l7 19-7-5-7 5z"/>')]);
+  }, [svg(bear == null ? ICON.pin : '<path d="M12 2l7 19-7-5-7 5z"/>')]);
   if (bear != null) {
     const rot = state.heading == null ? bear : (bear - state.heading + 360) % 360;
     arrow.style.transform = 'rotate(' + rot + 'deg)';
@@ -595,7 +617,12 @@ function renderMap() {
             : 'Enable compass arrows',
           onclick: enableCompass,
         }),
-    el('div', { class: 'geo-card__hint', text: 'Walk to a stage and tap “Set here”. Works offline — pins sync when you get signal.' }),
+    el('div', {
+      class: 'geo-card__hint',
+      text: state.stages.some(function (s) { return stageCoords(s); })
+        ? 'Arrows point to pinned stages. Works offline — pins sync when you get signal.'
+        : 'No stages pinned yet. Walk to a stage and tap “Set here” — arrows appear once a stage has a location.',
+    }),
   ]));
 
   // One row per stage: known stages first, then any extras from the sheet.
