@@ -114,7 +114,18 @@ const state = {
   geoWatch: null,
   heading: null,       // degrees from true north, when the compass is enabled
   compass: 'off',      // off | on | denied | unsupported
+  autoTarget: false,   // point at the next set we rated highly (opt-in)
 };
+
+/* The auto-target choice is a preference, so it survives app restarts. */
+try {
+  state.autoTarget = localStorage.getItem('garbicz.autoTarget') === '1';
+} catch (e) { /* private mode — fall back to off */ }
+function setAutoTarget(on) {
+  state.autoTarget = !!on;
+  try { localStorage.setItem('garbicz.autoTarget', on ? '1' : '0'); } catch (e) {}
+  renderMap();
+}
 
 /* ---------- 5. Sync status UI ------------------------------------------- */
 function setStatus(status, label) {
@@ -210,6 +221,61 @@ function formatDayLabel(dateStr, long) {
     weekday: long ? 'long' : 'short', day: 'numeric', month: long ? 'long' : 'short',
   });
 }
+/* Auto-targeting only fires for a set at least one of us rates this highly —
+   the point is to help when we're undecided, not to nag. */
+const TARGET_MIN_RATING = 3;
+const TARGET_LOOKAHEAD_MIN = 8 * 60;  // ignore anything further off than this
+const TARGET_GRACE_MIN = 90;          // a set that started recently is still on
+
+/** Parses "YYYY-MM-DD HH:mm" as a naive local Date (no timezone applied). */
+function wallClockToDate(s) {
+  const m = str(s).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!m) return null;
+  return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+}
+
+/** "Now" as festival wall-clock, so this is right from any timezone. */
+function festivalNow() {
+  return isoInstantToWallClock(new Date().toISOString());
+}
+
+function formatCountdown(mins) {
+  if (mins <= 0 && mins > -TARGET_GRACE_MIN) return 'on now';
+  if (mins < 60) return 'in ' + mins + ' min';
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return 'in ' + h + 'h' + (m ? ' ' + m + 'm' : '');
+}
+
+/**
+ * The next set worth walking to: soonest upcoming act rated >= 3 by either of
+ * us. Returns null when there is nothing coming up, which is the signal to
+ * show no arrow at all.
+ */
+function nextTarget() {
+  const nowStr = festivalNow();
+  const now = nowStr ? wallClockToDate(nowStr) : null;
+  if (!now) return null;
+
+  let best = null;
+  state.rows.forEach(function (r) {
+    const p = parseSetTime(r[F.setTime]);
+    if (!p.day || !p.time) return;
+    const rating = Math.max(ratingNum(r[F.m]) || 0, ratingNum(r[F.a]) || 0);
+    if (rating < TARGET_MIN_RATING) return;
+    const when = wallClockToDate(p.day + ' ' + p.time);
+    if (!when) return;
+    const mins = Math.round((when - now) / 60000);
+    if (mins < -TARGET_GRACE_MIN || mins > TARGET_LOOKAHEAD_MIN) return;
+    if (!best || mins < best.minutes) best = { row: r, minutes: mins, rating: rating };
+  });
+  if (!best) return null;
+
+  const name = str(best.row[F.stage]);
+  best.stageName = name;
+  best.stage = state.stages.find(function (s) { return s.Stage === name; }) || null;
+  return best;
+}
+
 function formatSetTimeChip(v) {
   const p = parseSetTime(v);
   if (!p.day) return str(v); // empty, or legacy free text — show as-is
@@ -389,8 +455,9 @@ function render() {
   const fab = $('#addBtn');
   if (fab) fab.hidden = (view === 'map');   // adding DJs is a list action
 
-  // Location only runs while the map is open.
-  if (view === 'map') startGeo(); else stopGeo();
+  // Location and the countdown tick only run while the map is open.
+  if (view === 'map') { startGeo(); startTargetTick(); }
+  else { stopGeo(); stopTargetTick(); }
 
   if (view === 'map') renderMap();
   else if (view === 'calendar') renderCalendar();
@@ -498,6 +565,18 @@ function stopGeo() {
   if (state.geoWatch != null) { navigator.geolocation.clearWatch(state.geoWatch); state.geoWatch = null; }
 }
 
+/* Keeps the countdown honest while the map sits open. */
+let _targetTick = null;
+function startTargetTick() {
+  if (_targetTick != null) return;
+  _targetTick = setInterval(function () {
+    if (state.view === 'map' && state.autoTarget) renderMap();
+  }, 30000);
+}
+function stopTargetTick() {
+  if (_targetTick != null) { clearInterval(_targetTick); _targetTick = null; }
+}
+
 function onOrientation(e) {
   let h = null;
   if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
@@ -536,7 +615,7 @@ async function enableCompass() {
 
 /** Rotates just the arrows, so compass updates don't rebuild the whole list. */
 function updateArrows() {
-  const arrows = document.querySelectorAll('.stage-row__arrow');
+  const arrows = document.querySelectorAll('.stage-row__arrow, .target__arrow');
   for (let i = 0; i < arrows.length; i++) {
     const b = parseFloat(arrows[i].getAttribute('data-bearing'));
     if (isNaN(b)) continue;
@@ -599,9 +678,71 @@ function stageRow(stage) {
   ]);
 }
 
+/** Big pointer card for the next set worth walking to. */
+function targetCard(t) {
+  const coords = t.stage ? stageCoords(t.stage) : null;
+  const here = state.pos;
+  const dist = (coords && here) ? distanceM(here, coords) : null;
+  const bear = (coords && here) ? bearingDeg(here, coords) : null;
+
+  const arrow = el('div', {
+    class: 'target__arrow' + (bear == null ? ' is-idle' : ''),
+    'data-bearing': bear == null ? '' : String(bear),
+  }, [svg(bear == null ? ICON.pin : '<path d="M12 2l7 19-7-5-7 5z"/>')]);
+  if (bear != null) {
+    const rot = state.heading == null ? bear : (bear - state.heading + 360) % 360;
+    arrow.style.transform = 'rotate(' + rot + 'deg)';
+  }
+
+  let sub;
+  if (!t.stageName) sub = 'No stage listed for this set';
+  else if (!coords) sub = t.stageName + ' · not pinned yet — tap “Set here” when you find it';
+  else if (dist == null) sub = t.stageName + ' · waiting for your position';
+  else sub = t.stageName + ' · ' + formatDistance(dist) + ' away';
+
+  return el('div', { class: 'target', role: 'button', tabindex: '0',
+    onclick: function () { openDetail(t.row.id); } }, [
+    arrow,
+    el('div', { class: 'target__main' }, [
+      el('div', { class: 'target__label', text: 'Next up · ' + formatCountdown(t.minutes) }),
+      el('div', { class: 'target__artist', text: str(t.row[F.artist]) || 'Untitled' }),
+      el('div', { class: 'target__sub', text: sub }),
+    ]),
+    el('div', { class: 'target__rating' }, [
+      el('span', { class: 'cal-tag cal-tag--m', text: 'M ' + (str(t.row[F.m]) || '–') }),
+      el('span', { class: 'cal-tag cal-tag--a', text: 'A ' + (str(t.row[F.a]) || '–') }),
+    ]),
+  ]);
+}
+
 function renderMap() {
   const list = $('#list');
   list.innerHTML = '';
+
+  // Auto-target: opt-in, and only ever fires for a set rated >= 3 by one of us.
+  const target = state.autoTarget ? nextTarget() : null;
+  list.appendChild(el('div', { class: 'auto-toggle' + (state.autoTarget ? ' is-on' : '') }, [
+    el('div', { class: 'auto-toggle__text' }, [
+      el('span', { class: 'auto-toggle__title', text: 'Point me to the next set' }),
+      el('span', { class: 'auto-toggle__hint', text: 'Only for sets rated ' + TARGET_MIN_RATING + '+ by either of us' }),
+    ]),
+    el('button', {
+      class: 'switch' + (state.autoTarget ? ' is-on' : ''),
+      type: 'button',
+      role: 'switch',
+      'aria-checked': state.autoTarget ? 'true' : 'false',
+      'aria-label': 'Auto-target the next set',
+      onclick: function () { setAutoTarget(!state.autoTarget); },
+    }, [el('span', { class: 'switch__knob' })]),
+  ]));
+
+  if (state.autoTarget) {
+    list.appendChild(target
+      ? targetCard(target)
+      : el('div', { class: 'target target--none' }, [
+          el('div', { class: 'target__sub', text: 'Nothing rated ' + TARGET_MIN_RATING + '+ coming up — wander freely.' }),
+        ]));
+  }
 
   // GPS status
   const pos = state.pos;
