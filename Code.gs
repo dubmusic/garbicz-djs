@@ -23,8 +23,12 @@ const SHEET_NAME = 'DJs'; // adjust to your tab name if different
 const STAGES_SHEET_NAME = 'Stages';
 const STAGE_HEADERS = ['Stage', 'lat', 'lng', 'accuracy', 'lastModified'];
 const STAGE_NAMES = [
-  'Wald', 'Wiese', 'Buk Corner', 'See', 'Loco Paradiso',
-  'Pleasure Island', 'Juicy', 'Ambient Floor', 'Wein Bar'
+  'Wald', 'Wiese', 'Buk Corner', 'See', 'Loco Paraiso',
+  'Pleasure Island', 'Juicy', 'Ambient Floor', 'Weinbar',
+  'Performances',
+  'Lichtung Teebar', 'Lichtung Amphitheater', 'Lichtung Moontent',
+  'Lichtung Dome', 'Lichtung Sober Space', 'Lichtung Playground',
+  'Junkyard Kneipe', 'Junkyard Amphitheater', 'Junkyard Schuppen'
 ];
 
 // Your visible columns, in order.

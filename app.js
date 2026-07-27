@@ -148,14 +148,23 @@ function webUrl(v) {
    if no time). That form sorts chronologically as plain text and is easy to
    group by day for the calendar. The festival runs Jul 30 – Aug 2, 2026.
 ------------------------------------------------------------------------- */
-const FESTIVAL_DAYS = ['2026-07-30', '2026-07-31', '2026-08-01', '2026-08-02'];
+// The official timetable runs Wed 29 July through Mon 3 August 2026.
+const FESTIVAL_DAYS = [
+  '2026-07-29', '2026-07-30', '2026-07-31',
+  '2026-08-01', '2026-08-02', '2026-08-03',
+];
 const FESTIVAL_TZ = 'Europe/Warsaw';
 
-/* The festival's stages. Editing picks from this list so stage names stay
-   consistent (which also lets them be matched to map coordinates later). */
+/* The festival's stages, named as the official timetable names them, so a
+   stage always matches its map coordinates and its acts. Music stages first,
+   then the Lichtung and Junkyard areas. */
 const STAGES = [
-  'Wald', 'Wiese', 'Buk Corner', 'See', 'Loco Paradiso',
-  'Pleasure Island', 'Juicy', 'Ambient Floor', 'Wein Bar',
+  'Wald', 'Wiese', 'Buk Corner', 'See', 'Loco Paraiso',
+  'Pleasure Island', 'Juicy', 'Ambient Floor', 'Weinbar',
+  'Performances',
+  'Lichtung Teebar', 'Lichtung Amphitheater', 'Lichtung Moontent',
+  'Lichtung Dome', 'Lichtung Sober Space', 'Lichtung Playground',
+  'Junkyard Kneipe', 'Junkyard Amphitheater', 'Junkyard Schuppen',
 ];
 
 // Safety net for values that came back as a UTC instant rather than wall-clock
