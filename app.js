@@ -17,7 +17,7 @@ const IS_CONFIGURED = /^https:\/\/script\.google(usercontent)?\.com\//.test(EXEC
 const F = {
   artist: 'Artist', m: 'M', a: 'A', from: 'From', style: 'Style',
   bio: 'Biography', bestSet: 'Best DJ Set', ra: 'Resident Advisor',
-  ig: 'Instagram', sc: 'SoundCloud', setTime: 'Set Time', stage: 'Stage',
+  ig: 'Instagram', setTime: 'Set Time', stage: 'Stage',
 };
 const USER_FIELDS = Object.values(F);
 
@@ -933,10 +933,15 @@ function showView() {
   if (ig) links.push(el('a', { class: 'linkbtn linkbtn--ig', href: ig, target: '_blank', rel: 'noopener' }, [svg(ICON.ig), 'Instagram']));
   const ra = webUrl(rec[F.ra]);
   if (ra) links.push(el('a', { class: 'linkbtn linkbtn--ra', href: ra, target: '_blank', rel: 'noopener' }, [svg(ICON.ra), 'Resident Advisor']));
-  const sc = webUrl(rec[F.sc]);
-  if (sc) links.push(el('a', { class: 'linkbtn linkbtn--sc', href: sc, target: '_blank', rel: 'noopener' }, [svg(ICON.cloud), 'SoundCloud']));
+  // "Best DJ Set" holds a link to listen — usually SoundCloud, so label it so.
   const best = webUrl(rec[F.bestSet]);
-  if (best) links.push(el('a', { class: 'linkbtn linkbtn--set', href: best, target: '_blank', rel: 'noopener' }, [svg(ICON.play), 'Best set']));
+  if (best) {
+    const isSc = /soundcloud\.com/i.test(best);
+    links.push(el('a', {
+      class: 'linkbtn ' + (isSc ? 'linkbtn--sc' : 'linkbtn--set'),
+      href: best, target: '_blank', rel: 'noopener',
+    }, [svg(isSc ? ICON.cloud : ICON.play), isSc ? 'SoundCloud' : 'Best set']));
+  }
 
   const chips = [];
   if (str(rec[F.setTime])) chips.push(el('span', { class: 'chip chip--time' }, [svg(ICON.clock), formatSetTimeChip(rec[F.setTime])]));
@@ -989,12 +994,11 @@ function showEdit(isNew) {
   const fFrom = field('From', F.from, rec[F.from], { placeholder: 'City / country' });
   const fIg = field('Instagram', F.ig, rec[F.ig], { placeholder: '@handle or URL' });
   const fRa = field('Resident Advisor', F.ra, rec[F.ra], { placeholder: 'RA profile URL' });
-  const fSc = field('SoundCloud', F.sc, rec[F.sc], { placeholder: 'SoundCloud URL' });
-  const fBest = field('Best DJ set', F.bestSet, rec[F.bestSet], { placeholder: 'Link to a set' });
+  const fBest = field('Best DJ set', F.bestSet, rec[F.bestSet], { placeholder: 'SoundCloud or link to a set' });
   const fBio = field('Notes / biography', F.bio, rec[F.bio], { textarea: true, placeholder: 'Notes, why we like them…' });
 
   const inputs = {};
-  [fArtist, fStyle, fFrom, fIg, fRa, fSc, fBest, fBio].forEach(function (w) { inputs[w._key] = w._input; });
+  [fArtist, fStyle, fFrom, fIg, fRa, fBest, fBio].forEach(function (w) { inputs[w._key] = w._input; });
 
   const body = el('div', { class: 'editor__body' }, [
     fArtist,
@@ -1002,7 +1006,7 @@ function showEdit(isNew) {
     setTimeCtl,
     stageCtl,
     fStyle, fFrom,
-    fIg, fRa, fSc, fBest,
+    fIg, fRa, fBest,
     fBio,
   ]);
 

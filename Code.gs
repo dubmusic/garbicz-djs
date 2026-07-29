@@ -4,8 +4,7 @@
  * Bound to the Google Sheet. Serves JSON and accepts write requests.
  *
  * Your columns (row 1 = header):
- *   Artist | M | A | From | Style | Biography | Best DJ Set | Resident Advisor |
- *   Instagram | SoundCloud | Set Time | Stage
+ *   Artist | M | A | From | Style | Biography | Best DJ Set | Resident Advisor | Instagram | Set Time | Stage
  *
  * The app also needs two helper columns for syncing. If they are missing,
  * the script appends them automatically and back-fills them:
@@ -35,7 +34,7 @@ const STAGE_NAMES = [
 // Your visible columns, in order.
 const USER_HEADERS = [
   'Artist', 'M', 'A', 'From', 'Style',
-  'Biography', 'Best DJ Set', 'Resident Advisor', 'Instagram', 'SoundCloud',
+  'Biography', 'Best DJ Set', 'Resident Advisor', 'Instagram',
   'Set Time', 'Stage'
 ];
 
