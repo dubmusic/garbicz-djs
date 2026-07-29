@@ -301,6 +301,7 @@ input, select, textarea { font-family: inherit; }
 .linkbtn svg { width: 16px; height: 16px; fill: currentColor; }
 .linkbtn--ig { color: var(--pink); }
 .linkbtn--ra { color: var(--teal); }
+.linkbtn--sc { color: #ff8a3d; }
 .linkbtn--set { color: var(--violet-2); }
 .linkbtn:active { background: var(--surface-2); }
 

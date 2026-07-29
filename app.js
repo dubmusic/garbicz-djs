@@ -17,7 +17,7 @@ const IS_CONFIGURED = /^https:\/\/script\.google(usercontent)?\.com\//.test(EXEC
 const F = {
   artist: 'Artist', m: 'M', a: 'A', from: 'From', style: 'Style',
   bio: 'Biography', bestSet: 'Best DJ Set', ra: 'Resident Advisor',
-  ig: 'Instagram', setTime: 'Set Time', stage: 'Stage',
+  ig: 'Instagram', sc: 'SoundCloud', setTime: 'Set Time', stage: 'Stage',
 };
 const USER_FIELDS = Object.values(F);
 
@@ -331,6 +331,7 @@ const ICON = {
   ig: '<path d="M12 2c2.7 0 3 0 4.1.1 1.1 0 1.8.2 2.4.5.7.2 1.2.6 1.7 1.1s.9 1 1.1 1.7c.3.6.5 1.3.5 2.4C22 8.9 22 9.3 22 12s0 3-.1 4.1c0 1.1-.2 1.8-.5 2.4a4.7 4.7 0 01-1.1 1.7 4.7 4.7 0 01-1.7 1.1c-.6.3-1.3.5-2.4.5-1.1.1-1.4.1-4.1.1s-3 0-4.1-.1c-1.1 0-1.8-.2-2.4-.5a4.7 4.7 0 01-1.7-1.1 4.7 4.7 0 01-1.1-1.7c-.3-.6-.5-1.3-.5-2.4C2 15 2 14.7 2 12s0-3 .1-4.1c0-1.1.2-1.8.5-2.4A4.7 4.7 0 013.7 3.8a4.7 4.7 0 011.7-1.1c.6-.3 1.3-.5 2.4-.5C8.9 2 9.3 2 12 2zm0 5a5 5 0 100 10 5 5 0 000-10zm0 8.2A3.2 3.2 0 1112 8.8a3.2 3.2 0 010 6.4zm5.3-8.4a1.2 1.2 0 11-2.4 0 1.2 1.2 0 012.4 0z"/>',
   ra: '<path d="M4 4h16v3H4zm0 5h16v3H4zm0 5h10v3H4z"/>',
   play: '<path d="M8 5v14l11-7z"/>',
+  cloud: '<path d="M2 17h1v-5H2zm2.5 0h1v-7h-1zm2.5 0h1V8H7zm2.5 0h1V7h-1zm2.5 0h1V9h-1zm3.5 0h4a3 3 0 000-6 4.5 4.5 0 00-8.2-2.1A2 2 0 0014 11v6z"/>',
 };
 /**
  * Builds an icon.
@@ -932,6 +933,8 @@ function showView() {
   if (ig) links.push(el('a', { class: 'linkbtn linkbtn--ig', href: ig, target: '_blank', rel: 'noopener' }, [svg(ICON.ig), 'Instagram']));
   const ra = webUrl(rec[F.ra]);
   if (ra) links.push(el('a', { class: 'linkbtn linkbtn--ra', href: ra, target: '_blank', rel: 'noopener' }, [svg(ICON.ra), 'Resident Advisor']));
+  const sc = webUrl(rec[F.sc]);
+  if (sc) links.push(el('a', { class: 'linkbtn linkbtn--sc', href: sc, target: '_blank', rel: 'noopener' }, [svg(ICON.cloud), 'SoundCloud']));
   const best = webUrl(rec[F.bestSet]);
   if (best) links.push(el('a', { class: 'linkbtn linkbtn--set', href: best, target: '_blank', rel: 'noopener' }, [svg(ICON.play), 'Best set']));
 
@@ -986,11 +989,12 @@ function showEdit(isNew) {
   const fFrom = field('From', F.from, rec[F.from], { placeholder: 'City / country' });
   const fIg = field('Instagram', F.ig, rec[F.ig], { placeholder: '@handle or URL' });
   const fRa = field('Resident Advisor', F.ra, rec[F.ra], { placeholder: 'RA profile URL' });
+  const fSc = field('SoundCloud', F.sc, rec[F.sc], { placeholder: 'SoundCloud URL' });
   const fBest = field('Best DJ set', F.bestSet, rec[F.bestSet], { placeholder: 'Link to a set' });
   const fBio = field('Notes / biography', F.bio, rec[F.bio], { textarea: true, placeholder: 'Notes, why we like them…' });
 
   const inputs = {};
-  [fArtist, fStyle, fFrom, fIg, fRa, fBest, fBio].forEach(function (w) { inputs[w._key] = w._input; });
+  [fArtist, fStyle, fFrom, fIg, fRa, fSc, fBest, fBio].forEach(function (w) { inputs[w._key] = w._input; });
 
   const body = el('div', { class: 'editor__body' }, [
     fArtist,
@@ -998,7 +1002,7 @@ function showEdit(isNew) {
     setTimeCtl,
     stageCtl,
     fStyle, fFrom,
-    fIg, fRa, fBest,
+    fIg, fRa, fSc, fBest,
     fBio,
   ]);
 
